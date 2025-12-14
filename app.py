@@ -178,6 +178,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
+    Actualiza st.session_state sin necesidad de st.rerun().
     """
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
     
@@ -190,7 +191,7 @@ def update_price_from_item_or_lugar():
     if not items_disponibles:
         st.session_state.form_item = ''
         st.session_state.form_valor_bruto = 0
-        st.session_state.form_desc_adic_input = 0 # Usar el key del number_input
+        st.session_state.form_desc_adic_input = 0 
         return
         
     if current_item not in items_disponibles:
@@ -206,21 +207,23 @@ def update_price_from_item_or_lugar():
         
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
     
+    # Al modificar estos valores, Streamlit forzará un rerun automáticamente
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
-    # 🚨 NOTA: NO reiniciamos el descuento adicional aquí, pero sí forzamos el nuevo valor bruto.
     
 def force_recalculate():
     """
-    Función de callback simple para forzar el recálculo (rerun)
-    al cambiar los number_input.
+    Función de callback simple para asegurar que el estado de la sesión
+    se ha actualizado. No requiere st.rerun().
     """
-    # Streamlit detecta que el estado de sesión ha cambiado y redibuja.
-    # El st.rerun() aquí es crucial para actualizar el cálculo final fuera del form.
-    st.rerun()
+    # Esta función está vacía pero Streamlit detecta que 
+    # los number_input cambiaron (lo que ya actualizó st.session_state) 
+    # y automáticamente fuerza el rerun para actualizar el cálculo final.
+    pass
 
 def update_edit_price():
     """
     Callback llamado cuando 'edit_lugar' o 'edit_item' cambia en el modal de edición.
+    Actualiza st.session_state sin necesidad de st.rerun().
     """
     lugar_key_edit = st.session_state.get('edit_lugar', '').upper()
     item_key_edit = st.session_state.get('edit_item', '')
@@ -292,7 +295,7 @@ if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondar
     st.session_state.atenciones_df = load_data() 
     
     # Reiniciar el estado de sesión de los inputs del formulario principal
-    keys_to_delete = ['form_lugar', 'form_item', 'form_valor_bruto', 'form_desc_adic_input', 'form_metodo_pago']
+    keys_to_delete = ['form_lugar', 'form_item', 'form_valor_bruto', 'form_desc_adic_input', 'form_metodo_pago', 'form_paciente']
     for key in keys_to_delete:
          if key in st.session_state: del st.session_state[key]
     
@@ -317,20 +320,19 @@ with tab_registro:
     
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' para agregar datos iniciales.")
-        # No usamos st.stop() aquí para permitir que el usuario acceda a la pestaña de Configuración.
     
     # 1. Definir valores iniciales y forzar la inicialización si faltan
     
+    # Intenta inicializar el lugar con el primero disponible
     lugar_key_initial = LUGARES[0] if LUGARES else ''
-    
     if 'form_lugar' not in st.session_state:
         st.session_state.form_lugar = lugar_key_initial
     
     current_lugar_value_upper = st.session_state.form_lugar 
     items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
     
+    # Intenta inicializar el ítem
     item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
-    
     if 'form_item' not in st.session_state or st.session_state.form_item not in items_filtrados_initial:
         st.session_state.form_item = item_key_initial
     
@@ -386,10 +388,10 @@ with tab_registro:
             min_value=0, 
             step=1000,
             key="form_valor_bruto", 
-            on_change=force_recalculate # RECALCULAR AL CAMBIAR EL VALOR BRUTO
+            on_change=force_recalculate # CALLBACK SIN st.rerun()
         )
 
-    # 4. DESCUENTO ADICIONAL (AHORA FUERA DEL FORM)
+    # 4. DESCUENTO ADICIONAL (FUERA DEL FORMULARIO)
     with col_reactivo_4:
         st.number_input(
             "✂️ **Polvo Mágico Extra (Ajuste)**", 
@@ -397,7 +399,7 @@ with tab_registro:
             value=st.session_state.get('form_desc_adic_input', 0), 
             step=1000, 
             key="form_desc_adic_input",
-            on_change=force_recalculate, # RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
+            on_change=force_recalculate, # CALLBACK SIN st.rerun()
             help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
         )
 
@@ -409,123 +411,127 @@ with tab_registro:
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles Adicionales y Cálculo Final", expanded=True):
             
-            if not items_filtrados_initial and LUGARES: # Si hay lugares pero no items, se detiene
-                st.warning(f"No hay ítems configurados para el lugar '{current_lugar_value_upper}'. Configure la pestaña.")
+            if not LUGARES or not items_filtrados_initial:
+                # Esto cubre el caso donde el usuario eliminó toda la configuración
+                st.warning(f"No hay lugares o ítems configurados.")
                 st.form_submit_button("Añadir datos antes de registrar", disabled=True)
-                st.stop()
+                # No usamos st.stop() aquí para permitir que el usuario acceda a la pestaña de Configuración.
+            else:
+                col1, col2 = st.columns([1, 1])
 
-
-            col1, col2 = st.columns([1, 1])
-
-            with col1:
-                # Widgets simples sin on_change
-                fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha") 
-                paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
-                
-                try:
-                    pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
-                except ValueError:
-                    pago_idx = 0
-                metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago", index=pago_idx)
-                
-            with col2:
-                
-                # Se obtienen los valores reactivos del session_state para el cálculo
-                desc_adicional_calc = st.session_state.form_desc_adic_input 
-                valor_bruto_calc = st.session_state.form_valor_bruto
-                
-                # Ejecutar el cálculo central en tiempo real. 
-                resultados = calcular_ingreso(
-                    st.session_state.form_lugar, 
-                    st.session_state.form_item,              
-                    st.session_state.form_metodo_pago,
-                    desc_adicional_calc,
-                    fecha_atencion=st.session_state.form_fecha, 
-                    valor_bruto_override=valor_bruto_calc 
-                )
-
-                st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
-                
-                # --- LÓGICA DE ETIQUETADO DEL TRIBUTO ---
-                current_lugar_upper = st.session_state.form_lugar 
-                
-                try:
-                    current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()]
-                except Exception:
-                    current_day_name = "N/A"
+                with col1:
+                    # Widgets simples sin on_change
+                    fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha") 
+                    paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                     
-                desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
-                
-                is_rule_applied = False
-                if current_lugar_upper in DESCUENTOS_REGLAS:
-                     if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
-                         desc_lugar_label += f" (Regla: {current_day_name})"
-                         is_rule_applied = True
-
-                if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
-                     desc_lugar_label += " (Base)"
-                
-                st.info(f"**{desc_lugar_label}:** {format_currency(resultados['desc_fijo_lugar'])}")
-                
-                st.markdown("###")
-                st.success(
-                    f"## 💎 Tesoro Total (Líquido): {format_currency(resultados['total_recibido'])}"
-                )
-                
-            # --- BOTÓN DE ENVÍO DEL FORMULARIO ---
-            submit_button = st.form_submit_button(
-                "✅ ¡Guardar Aventura y Tesoro!", 
-                use_container_width=True, 
-                type="primary"
-            )
-
-            if submit_button:
-                if st.session_state.form_paciente == "":
-                    st.error("Por favor, ingresa el nombre del paciente.")
-                else:
-                    # 1. Recalculo final 
-                    resultados_finales = calcular_ingreso(
+                    try:
+                        pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
+                    except ValueError:
+                        pago_idx = 0
+                    metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago", index=pago_idx)
+                    
+                with col2:
+                    
+                    # Se obtienen los valores reactivos del session_state para el cálculo
+                    desc_adicional_calc = st.session_state.form_desc_adic_input 
+                    valor_bruto_calc = st.session_state.form_valor_bruto
+                    
+                    # Ejecutar el cálculo central en tiempo real. 
+                    resultados = calcular_ingreso(
                         st.session_state.form_lugar, 
-                        st.session_state.form_item, 
-                        st.session_state.form_metodo_pago, 
-                        st.session_state.form_desc_adic_input, 
+                        st.session_state.form_item,              
+                        st.session_state.form_metodo_pago,
+                        desc_adicional_calc,
                         fecha_atencion=st.session_state.form_fecha, 
-                        valor_bruto_override=st.session_state.form_valor_bruto
+                        valor_bruto_override=valor_bruto_calc 
                     )
+
+                    st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                     
-                    # 2. Creación del nuevo registro
-                    nueva_atencion = {
-                        "Fecha": st.session_state.form_fecha.strftime('%Y-%m-%d'), 
-                        "Lugar": st.session_state.form_lugar, 
-                        "Ítem": st.session_state.form_item, 
-                        "Paciente": st.session_state.form_paciente, 
-                        "Método Pago": st.session_state.form_metodo_pago,
-                        "Valor Bruto": resultados_finales['valor_bruto'],
-                        "Desc. Fijo Lugar": resultados_finales['desc_fijo_lugar'],
-                        "Desc. Tarjeta": resultados_finales['desc_tarjeta'],
-                        "Desc. Adicional": st.session_state.form_desc_adic_input, 
-                        "Total Recibido": resultados_finales['total_recibido']
-                    }
+                    # --- LÓGICA DE ETIQUETADO DEL TRIBUTO ---
+                    current_lugar_upper = st.session_state.form_lugar 
                     
-                    # 3. Actualizar DataFrame y CSV
-                    df_actualizado = pd.concat([
-                        st.session_state.atenciones_df, 
-                        pd.DataFrame([nueva_atencion])
-                    ], ignore_index=True)
+                    try:
+                        current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()]
+                    except Exception:
+                        current_day_name = "N/A"
+                        
+                    desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                     
-                    st.session_state.atenciones_df = df_actualizado
-                    save_data(st.session_state.atenciones_df)
-                    st.success(f"🎉 ¡Aventura registrada para {st.session_state.form_paciente}! El tesoro es {format_currency(resultados_finales['total_recibido'])}")
+                    is_rule_applied = False
+                    if current_lugar_upper in DESCUENTOS_REGLAS:
+                         try: # Usar try-except para el acceso al diccionario anidado
+                             regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                             if regla_especial_monto is not None:
+                                 desc_lugar_label += f" (Regla: {current_day_name})"
+                                 is_rule_applied = True
+                         except Exception:
+                             pass
+
+
+                    if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
+                         desc_lugar_label += " (Base)"
                     
-                    # 4. Forzar recarga de los selectboxes y number inputs.
-                    # El form, al ser clear_on_submit=True, ya se limpia, pero aseguramos la inicialización
-                    # de los widgets fuera del form.
-                    if LUGARES: st.session_state.form_lugar = LUGARES[0]
-                    if items_filtrados_initial: st.session_state.form_item = items_filtrados_initial[0]
-                    st.session_state.form_valor_bruto = int(PRECIOS_BASE_CONFIG.get(LUGARES[0], {}).get(items_filtrados_initial[0], 0) if LUGARES and items_filtrados_initial else 0)
-                    st.session_state.form_desc_adic_input = 0
+                    st.info(f"**{desc_lugar_label}:** {format_currency(resultados['desc_fijo_lugar'])}")
                     
-                    st.rerun() 
+                    st.markdown("###")
+                    st.success(
+                        f"## 💎 Tesoro Total (Líquido): {format_currency(resultados['total_recibido'])}"
+                    )
+                
+                # --- BOTÓN DE ENVÍO DEL FORMULARIO ---
+                submit_button = st.form_submit_button(
+                    "✅ ¡Guardar Aventura y Tesoro!", 
+                    use_container_width=True, 
+                    type="primary"
+                )
+
+                if submit_button:
+                    if st.session_state.form_paciente == "":
+                        st.error("Por favor, ingresa el nombre del paciente.")
+                    else:
+                        # 1. Recalculo final 
+                        resultados_finales = calcular_ingreso(
+                            st.session_state.form_lugar, 
+                            st.session_state.form_item, 
+                            st.session_state.form_metodo_pago, 
+                            st.session_state.form_desc_adic_input, 
+                            fecha_atencion=st.session_state.form_fecha, 
+                            valor_bruto_override=st.session_state.form_valor_bruto
+                        )
+                        
+                        # 2. Creación del nuevo registro
+                        nueva_atencion = {
+                            "Fecha": st.session_state.form_fecha.strftime('%Y-%m-%d'), 
+                            "Lugar": st.session_state.form_lugar, 
+                            "Ítem": st.session_state.form_item, 
+                            "Paciente": st.session_state.form_paciente, 
+                            "Método Pago": st.session_state.form_metodo_pago,
+                            "Valor Bruto": resultados_finales['valor_bruto'],
+                            "Desc. Fijo Lugar": resultados_finales['desc_fijo_lugar'],
+                            "Desc. Tarjeta": resultados_finales['desc_tarjeta'],
+                            "Desc. Adicional": st.session_state.form_desc_adic_input, 
+                            "Total Recibido": resultados_finales['total_recibido']
+                        }
+                        
+                        # 3. Actualizar DataFrame y CSV
+                        df_actualizado = pd.concat([
+                            st.session_state.atenciones_df, 
+                            pd.DataFrame([nueva_atencion])
+                        ], ignore_index=True)
+                        
+                        st.session_state.atenciones_df = df_actualizado
+                        save_data(st.session_state.atenciones_df)
+                        st.success(f"🎉 ¡Aventura registrada para {st.session_state.form_paciente}! El tesoro es {format_currency(resultados_finales['total_recibido'])}")
+                        
+                        # 4. Forzar recarga de los selectboxes y number inputs.
+                        # Al usar clear_on_submit=True, solo necesitamos resetear los inputs FUERA del form.
+                        if LUGARES: st.session_state.form_lugar = LUGARES[0]
+                        if items_filtrados_initial: st.session_state.form_item = items_filtrados_initial[0]
+                        st.session_state.form_valor_bruto = int(PRECIOS_BASE_CONFIG.get(LUGARES[0], {}).get(items_filtrados_initial[0], 0) if LUGARES and items_filtrados_initial else 0)
+                        st.session_state.form_desc_adic_input = 0
+                        
+                        st.rerun() 
 
 
 with tab_dashboard:
@@ -657,7 +663,7 @@ with tab_dashboard:
             format_currency(avg_net_income)
         )
         
-        avg_cost_reduction = total_cost_reductions / total_atenciones
+        avg_cost_reduction = total_cost_reductions / total_atenciones if total_atenciones else 0
         col_r3.metric(
             "💔 Costo Promedio por Atención",
             format_currency(avg_cost_reduction)
@@ -880,7 +886,7 @@ with tab_dashboard:
                     min_value=0, 
                     step=1000,
                     key="edit_valor_bruto" ,
-                    on_change=force_recalculate # RECALCULAR AL CAMBIAR EL VALOR BRUTO
+                    on_change=force_recalculate # CALLBACK SIN st.rerun()
                 )
 
                 edited_desc_adicional_manual = st.number_input(
@@ -889,7 +895,7 @@ with tab_dashboard:
                     value=st.session_state.edit_desc_adic, 
                     step=1000, 
                     key="edit_desc_adic",
-                    on_change=force_recalculate, # RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
+                    on_change=force_recalculate, # CALLBACK SIN st.rerun()
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
@@ -912,9 +918,13 @@ with tab_dashboard:
                 
                 is_rule_applied = False
                 if current_lugar_upper in DESCUENTOS_REGLAS:
-                     if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
-                         desc_lugar_label += f" (Regla: {current_day_name})"
-                         is_rule_applied = True
+                     try: # Usar try-except para el acceso al diccionario anidado
+                         regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                         if regla_especial_monto is not None:
+                             desc_lugar_label += f" (Regla: {current_day_name})"
+                             is_rule_applied = True
+                     except Exception:
+                         pass
 
                 if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
                      desc_lugar_label += " (Base)"
