@@ -454,8 +454,16 @@ else:
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (CÁLCULO EN TIEMPO REAL)
+# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN FINAL DE VALOR BRUTO)
 # ===============================================
+
+# Función de Callback para actualizar el estado del lugar
+def update_edited_lugar():
+    """
+    Actualiza el lugar seleccionado inmediatamente (fuera del form)
+    para que la lista de Ítems se recalcule al instante.
+    """
+    st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 if st.session_state.edit_index is not None:
     
@@ -524,13 +532,33 @@ if st.session_state.edit_index is not None:
             edited_metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
         
         with col_edit2_out: 
+            
+            # --- LÓGICA DE PRECIO BASE SUGERIDO CORREGIDA ---
+            
+            # Obtener el Ítem y Lugar actualmente seleccionados del st.session_state
+            current_lugar = st.session_state.edit_lugar
+            current_item = st.session_state[item_key]
+            
+            precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar, {}).get(current_item, 0)
+
+            # Si el usuario NO ha tocado el campo, o si el Ítem/Lugar ha cambiado, usamos el precio sugerido.
+            if 'edit_valor_bruto' not in st.session_state or st.session_state.edited_lugar_state != data_to_edit['Lugar'] or st.session_state[item_key] != data_to_edit['Ítem']:
+                initial_valor_bruto = int(precio_base_sugerido)
+                st.session_state.edit_valor_bruto = initial_valor_bruto
+            else:
+                # Si el usuario ya interactuó con el campo, o si la página se está re-renderizando sin cambio de Ítem/Lugar, usamos el valor guardado.
+                initial_valor_bruto = st.session_state.edit_valor_bruto
+                
+            # Renderizar el widget usando el valor inicial calculado.
             edited_valor_bruto = st.number_input(
                 "💰 **Valor Bruto (Manual)**", 
                 min_value=0, 
-                value=int(data_to_edit['Valor Bruto']), 
+                value=initial_valor_bruto, 
                 step=1000,
                 key="edit_valor_bruto"
             )
+            # --- FIN DE LÓGICA DE PRECIO BASE ---
+            
             edited_desc_adicional_manual = st.number_input(
                 "✂️ **Descuento Adicional/Ajuste**", 
                 min_value=-500000, 
@@ -540,10 +568,9 @@ if st.session_state.edit_index is not None:
             )
 
             # ------------------------------------------------------------------
-            # *** CÁLCULO Y DISPLAY DE RESULTADOS EN TIEMPO REAL (FUERA DEL FORM) ***
+            # CÁLCULO Y DISPLAY DE RESULTADOS EN TIEMPO REAL (FUERA DEL FORM)
             # ------------------------------------------------------------------
             
-            # Recalcular el total líquido: USAMOS LOS VALORES ACTUALES DEL st.session_state
             recalculo = calcular_ingreso(
                 st.session_state.edit_lugar, 
                 st.session_state[item_key], 
@@ -553,7 +580,7 @@ if st.session_state.edit_index is not None:
                 valor_bruto_override=st.session_state.edit_valor_bruto 
             )
 
-            # Mostrar Descuentos (CORREGIDO)
+            # Mostrar Descuentos 
             st.warning(
                 f"**Desc. Tarjeta ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** ${recalculo['desc_tarjeta']:,.0f}".replace(",", ".")
             )
@@ -585,11 +612,11 @@ if st.session_state.edit_index is not None:
                     "Ítem": st.session_state[item_key], 
                     "Paciente": st.session_state.edit_paciente, 
                     "Método Pago": st.session_state.edit_metodo,
-                    "Valor Bruto": recalculo['valor_bruto'], # Usamos el valor del recalculo
-                    "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'], # Usamos el valor del recalculo
-                    "Desc. Tarjeta": recalculo['desc_tarjeta'], # Usamos el valor del recalculo
+                    "Valor Bruto": recalculo['valor_bruto'], 
+                    "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'], 
+                    "Desc. Tarjeta": recalculo['desc_tarjeta'], 
                     "Desc. Adicional": st.session_state.edit_desc_adic,
-                    "Total Recibido": recalculo['total_recibido'] # Usamos el valor del recalculo
+                    "Total Recibido": recalculo['total_recibido'] 
                 }
                 
                 save_data(st.session_state.atenciones_df)
