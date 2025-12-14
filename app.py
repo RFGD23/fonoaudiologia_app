@@ -40,8 +40,6 @@ try:
     DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
 except:
     # Fallback si no existen los archivos JSON o hay error
-    # NOTA: Asegúrese de que si usa este fallback, actualice los valores
-    # en la pestaña de Configuración Maestra con los datos correctos
     PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
@@ -144,7 +142,7 @@ def update_valor_bruto_on_item_change():
     Callback: FUERZA la actualización del valor bruto sugerido cuando cambia 
     el ítem o el lugar en el formulario de registro.
     """
-    # Aseguramos que la clave del lugar esté en mayúsculas para buscar en el JSON
+    # Esta función ahora es segura porque las claves se inicializan antes
     lugar_key = st.session_state.new_lugar.upper()
     item_seleccionado = st.session_state.new_item
     
@@ -246,6 +244,25 @@ if 'edit_index' not in st.session_state:
 if 'edited_lugar_state' not in st.session_state:
     st.session_state.edited_lugar_state = None 
 
+# --- INICIALIZACIÓN CRÍTICA DEL ESTADO DE SESIÓN PARA CALLBACKS ---
+# Aseguramos que las claves existan antes de que los callbacks intenten leerlas.
+if LUGARES:
+    default_lugar = LUGARES[0]
+    default_lugar_key = default_lugar.upper()
+    default_items = list(PRECIOS_BASE_CONFIG.get(default_lugar_key, {}).keys())
+    default_item = default_items[0] if default_items else ''
+    default_price = PRECIOS_BASE_CONFIG.get(default_lugar_key, {}).get(default_item, 0)
+    
+    if 'new_lugar' not in st.session_state:
+        st.session_state.new_lugar = default_lugar
+        
+    if 'new_item' not in st.session_state:
+        st.session_state.new_item = default_item
+        
+    if 'new_valor_bruto' not in st.session_state:
+        st.session_state.new_valor_bruto = int(default_price)
+# ------------------------------------------------------------------
+
 # --- Pestañas Principales ---
 tab_registro, tab_dashboard, tab_config = st.tabs(["📝 Registrar Aventura", "📊 Mapa del Tesoro", "⚙️ Configuración Maestra"])
 
@@ -259,9 +276,16 @@ with tab_registro:
             fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="new_fecha")
             
             # 1. SELECTBOX LUGAR (con Callback)
+            # Usamos el valor inicial de st.session_state.new_lugar
+            try:
+                lugar_index = LUGARES.index(st.session_state.new_lugar)
+            except ValueError:
+                lugar_index = 0
+
             lugar_seleccionado = st.selectbox("📍 Castillo/Lugar de Atención", 
                                               options=LUGARES, 
                                               key="new_lugar",
+                                              index=lugar_index,
                                               on_change=update_valor_bruto_on_item_change)
             
             # --- CLAVE EN MAYÚSCULAS ---
@@ -271,9 +295,16 @@ with tab_registro:
             items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
             
             # 2. SELECTBOX ÍTEM (con Callback)
+            # Usamos el valor inicial de st.session_state.new_item
+            try:
+                item_index = items_filtrados.index(st.session_state.new_item)
+            except ValueError:
+                item_index = 0
+
             item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
                                              options=items_filtrados, 
                                              key="new_item",
+                                             index=item_index,
                                              on_change=update_valor_bruto_on_item_change)
             
             paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="new_paciente")
@@ -281,17 +312,12 @@ with tab_registro:
 
         with col2:
             # --- LÓGICA DE VALOR BRUTO USANDO EL ESTADO DE SESIÓN ---
-            precio_base = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado, 0)
-
-            # Inicializar el estado de sesión si no existe o si las selecciones cambian
-            if 'new_valor_bruto' not in st.session_state or st.session_state.new_item != item_seleccionado or st.session_state.new_lugar != lugar_seleccionado:
-                 st.session_state.new_valor_bruto = int(precio_base)
-
+            # El valor inicial se toma del estado de sesión, que fue inicializado o actualizado por el callback
+            
             valor_bruto_input = st.number_input(
                 "💰 **Valor Bruto (Recompensa)**", 
                 min_value=0, 
-                # Usamos el valor del estado de sesión, que se actualiza con el callback
-                value=int(st.session_state.new_valor_bruto), 
+                value=int(st.session_state.new_valor_bruto), # Usamos el valor del estado de sesión
                 step=1000,
                 key="new_valor_bruto" 
             )
@@ -320,7 +346,7 @@ with tab_registro:
             
             # Etiqueta dinámica para el descuento fijo/condicional
             desc_lugar_label = f"Tributo al Castillo ({lugar_seleccionado})"
-            if lugar_seleccionado in DESCUENTOS_REGLAS:
+            if lugar_seleccionado.upper() in DESCUENTOS_REGLAS:
                 dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                 desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
 
@@ -353,7 +379,10 @@ with tab_registro:
                     st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                     save_data(st.session_state.atenciones_df)
                     st.success(f"🎉 ¡Aventura registrada para {paciente}! El tesoro es ${resultados['total_recibido']:,.0f}".replace(",", "."))
-                    st.balloons()
+                    # Limpiar estado de sesión para el siguiente registro
+                    del st.session_state.new_lugar
+                    del st.session_state.new_item
+                    st.rerun()
 
 
 with tab_dashboard:
