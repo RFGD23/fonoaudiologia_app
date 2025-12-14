@@ -16,17 +16,23 @@ st.set_page_config(
 # 2. FUNCIONES DE PERSISTENCIA (CONEXIÓN Y CARGA)
 # ===============================================
 
-# Conexión al Pooler de Sesiones de Supabase
-# Esta debe ser la única llamada a st.connection en tu aplicación.
+# Reemplaza la sección de conexión en app.py con esto:
+
+# ¡CONEXIÓN DIRECTA A LA BASE DE DATOS POSTGRES!
+# Esto evita el error "duplicate SASL authentication request" del Pooler (PGBouncer).
 conn = st.connection(
-    "supabase_pooler", 
+    "supabase_direct",  # Nombre de conexión actualizado
     type="sql",
     dialect="postgresql",
-    host="aws-1-us-east-1.pooler.supabase.com", 
+    # *** CAMBIO CLAVE: Usamos el host directo de la base de datos y el puerto 5432 (por defecto) ***
+    host="emnqztaxybhbmkuryhem.supabase.co", # <--- CAMBIA 'aws-1-us-east-1.pooler.supabase.com' por el HOST DIRECTO
     port=5432, 
     database="postgres",
-    username="postgres.emnqztaxybhbmkuryhem", 
+    username="postgres", # <--- El username es solo 'postgres' para la conexión directa
     password="Domileo1702" 
+)
+
+# ... El resto del código de la función load_data_from_db() y el dashboard se mantienen ...
 )
 
 @st.cache_data(ttl=3600)
