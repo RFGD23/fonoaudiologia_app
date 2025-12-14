@@ -424,7 +424,7 @@ else:
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (NUEVA SECCIÓN)
+# 5. MODAL DE EDICIÓN DE REGISTRO (CORRECCIÓN FINAL DE ÍTEMS)
 # ===============================================
 
 if st.session_state.edit_index is not None:
@@ -441,6 +441,7 @@ if st.session_state.edit_index is not None:
     # 2. Iniciar el formulario modal
     with st.expander(f"📝 Editar Atención para {data_to_edit['Paciente']}", expanded=True):
         
+        # 3. Necesitamos el formulario, pero lo procesaremos de manera especial
         with st.form("edit_form", clear_on_submit=False):
             st.subheader("Modificar Datos de la Atención")
 
@@ -449,13 +450,16 @@ if st.session_state.edit_index is not None:
             col_edit1, col_edit2 = st.columns(2)
 
             with col_edit1:
+                # La fecha debe ser un objeto date para el widget
                 edited_fecha = st.date_input("🗓️ Fecha de Atención", value=data_to_edit['Fecha'].date())
                 
-                # Lugar: Mantenemos la lógica de índice
+                # Para Lugar: Obtenemos el índice actual o 0 si falla
                 try:
                     lugar_idx = LUGARES.index(data_to_edit['Lugar'])
                 except ValueError:
                     lugar_idx = 0
+                    
+                # Usamos la clave para que Streamlit sepa que es el mismo widget en el formulario
                 edited_lugar = st.selectbox("📍 Lugar de Atención", options=LUGARES, index=lugar_idx, key="edit_lugar")
                 
                 # --- LÓGICA CORREGIDA PARA EL ÍTEM ---
@@ -463,17 +467,19 @@ if st.session_state.edit_index is not None:
                 # 1. Obtener la lista de ítems basada en el lugar SELECCIONADO (edited_lugar)
                 items_edit = list(PRECIOS_BASE_CONFIG.get(edited_lugar, {}).keys())
                 
-                # 2. Determinar si el ítem original del registro (data_to_edit['Ítem']) existe en la nueva lista.
+                # 2. Determinar el índice: Buscamos el ítem original del registro en la nueva lista de opciones.
                 try:
-                    # Intentamos usar el índice del ítem original si sigue en la lista del nuevo lugar
+                    # Si el ítem original existe en la nueva lista de opciones, usamos ese índice
                     current_item_index = items_edit.index(data_to_edit['Ítem'])
                 except ValueError:
-                    # Si no existe, usamos el primer elemento (índice 0)
+                    # Si el ítem original NO existe en la nueva lista (porque se cambió de lugar), 
+                    # el índice debe ser 0 para seleccionar el primer ítem de la lista del nuevo lugar.
                     current_item_index = 0
                 
-                # 3. Clave Dinámica: Forzamos el renderizado del widget si el lugar cambia.
-                # Creamos una clave basada en el Lugar (edited_lugar)
-                item_key = f"edit_item_for_{edited_lugar}" 
+                # 3. Clave Dinámica para forzar el re-renderizado del Ítem cuando el Lugar cambia.
+                # Nota: Streamlit puede ser quisquilloso con las claves dinámicas dentro de st.form.
+                # Forzamos una clave simple que depende del lugar.
+                item_key = f"edit_item_for_{edited_lugar}_{data_to_edit['Ítem']}" 
 
                 edited_item = st.selectbox(
                     "📋 Ítem/Procedimiento", 
