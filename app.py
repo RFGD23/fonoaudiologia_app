@@ -106,7 +106,13 @@ st.markdown("---")
 # Cargar los datos y asignarlos al estado de la sesión
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data()
-
+# --- Herramientas de Mantenimiento ---
+if st.sidebar.button("🧹 Limpiar Caché y Recargar Datos", type="secondary"):
+    st.cache_data.clear() # Limpia la caché de st.cache_data
+    st.cache_resource.clear() # Limpia la caché de st.cache_resource (si se usara)
+    st.success("Caché limpiada. Recargando aplicación...")
+    st.experimental_rerun()
+st.sidebar.markdown("---") # Separador visual para la barra lateral
 # --- FORMULARIO DE INGRESO ---
 with st.expander("➕ Ingresar Nueva Atención", expanded=True):
     col1, col2 = st.columns([1, 1])
