@@ -1,4 +1,4 @@
-import streamlit as st
+iimport streamlit as st
 import pandas as pd
 from datetime import date
 import os
@@ -141,14 +141,32 @@ def update_valor_bruto_on_item_change():
     """
     Callback: FUERZA la actualización del valor bruto sugerido cuando cambia 
     el ítem o el lugar en el formulario de registro.
+    
+    ESTA FUNCIÓN AHORA SE ASEGURA DE ACTUALIZAR EL PRECIO 
+    INCLUSO SI EL ÍTEM SELECCIONADO POR DEFECTO NO CAMBIÓ DE ÍNDICE.
     """
-    # Esta función ahora es segura porque las claves se inicializan antes
     lugar_key = st.session_state.new_lugar.upper()
+    
+    # Obtener la lista de ítems disponibles para el nuevo lugar
+    items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
+    
+    # 1. Asegurar que 'new_item' esté dentro de los ítems del nuevo lugar
     item_seleccionado = st.session_state.new_item
     
+    if item_seleccionado not in items_disponibles and items_disponibles:
+        # Si el ítem no existe en el nuevo lugar, forzamos la selección del primer ítem
+        st.session_state.new_item = items_disponibles[0]
+        item_seleccionado = items_disponibles[0]
+        
+    elif not items_disponibles:
+        # Si no hay ítems, el precio es 0
+        st.session_state.new_valor_bruto = 0
+        return
+
+    # 2. Calcular el precio base usando el ítem seleccionado (que ahora es válido)
     precio_base = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado, 0)
     
-    # Asignar el nuevo valor al widget 'new_valor_bruto' en el estado de sesión
+    # 3. Asignar el nuevo valor al widget 'new_valor_bruto' en el estado de sesión
     st.session_state.new_valor_bruto = int(precio_base)
 
 
@@ -295,10 +313,11 @@ with tab_registro:
             items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
             
             # 2. SELECTBOX ÍTEM (con Callback)
-            # Usamos el valor inicial de st.session_state.new_item
+            # Intentamos obtener el índice del ítem seleccionado en el estado de sesión dentro de la lista filtrada
             try:
                 item_index = items_filtrados.index(st.session_state.new_item)
             except ValueError:
+                 # Si el ítem previo no está en la nueva lista, usamos el índice 0 de la lista filtrada
                 item_index = 0
 
             item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
@@ -379,9 +398,11 @@ with tab_registro:
                     st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                     save_data(st.session_state.atenciones_df)
                     st.success(f"🎉 ¡Aventura registrada para {paciente}! El tesoro es ${resultados['total_recibido']:,.0f}".replace(",", "."))
-                    # Limpiar estado de sesión para el siguiente registro
+                    # Limpiar estado de sesión para forzar la inicialización al primer valor en la próxima ejecución
+                    # Esto evita que un ítem de un lugar se arrastre a otro
                     del st.session_state.new_lugar
                     del st.session_state.new_item
+                    del st.session_state.new_valor_bruto
                     st.rerun()
 
 
