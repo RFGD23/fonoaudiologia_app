@@ -4,10 +4,10 @@ from datetime import date
 import os
 import io
 import plotly.express as px 
-import json # <-- NUEVA LIBRERÍA
+import json 
 
 # ===============================================
-# CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
+# 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
 DATA_FILE = 'atenciones_registradas.csv'
@@ -19,7 +19,7 @@ def load_config(filename):
             return json.load(f)
     except FileNotFoundError:
         st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}. Asegúrate de que existe en la carpeta raíz.")
-        return {} # Retorna un diccionario vacío para evitar fallos
+        return {} 
     except json.JSONDecodeError:
         st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
         return {}
@@ -59,8 +59,6 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
-    # *** CAMBIO CLAVE: Acceso anidado a precios ***
-    # Accedemos a PRECIOS_BASE_CONFIG[Lugar][Ítem] de forma segura.
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
@@ -103,19 +101,19 @@ st.set_page_config(page_title="Control de Ingresos Fonoaudiología", layout="wid
 st.title("💸 Sistema Interactivo de Ingreso de Atenciones")
 st.markdown("---")
 
+# --- Herramientas de Mantenimiento (Mejora 5) ---
+if st.sidebar.button("🧹 Limpiar Caché y Recargar Datos", type="secondary"):
+    st.cache_data.clear() 
+    st.cache_resource.clear() 
+    st.success("Caché limpiada. Recargando aplicación...")
+    st.rerun() # Función corregida para forzar recarga
+
+st.sidebar.markdown("---") 
+
 # Cargar los datos y asignarlos al estado de la sesión
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data()
-# --- Herramientas de Mantenimiento ---
-if st.sidebar.button("🧹 Limpiar Caché y Recargar Datos", type="secondary"):
-    # Limpia la caché de st.cache_data
-    st.cache_data.clear() 
-    # Limpia la caché de st.cache_resource (si se usara)
-    st.cache_resource.clear() 
-    st.success("Caché limpiada. Recargando aplicación...")
-    # *** CORRECCIÓN: Usamos la función actual st.rerun() ***
-    st.rerun() 
-st.sidebar.markdown("---")
+
 # --- FORMULARIO DE INGRESO ---
 with st.expander("➕ Ingresar Nueva Atención", expanded=True):
     col1, col2 = st.columns([1, 1])
@@ -124,7 +122,6 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         fecha = st.date_input("🗓️ Fecha de Atención", date.today())
         lugar_seleccionado = st.selectbox("📍 Lugar de Atención", options=LUGARES)
         
-        # *** CAMBIO CLAVE: Filtrado inteligente de ítems usando la nueva estructura anidada ***
         items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).keys())
         item_seleccionado = st.selectbox("📋 Ítem/Procedimiento", options=items_filtrados)
         
@@ -132,7 +129,6 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO)
 
     with col2:
-        # *** CAMBIO CLAVE: Obtener el precio base con la nueva estructura ***
         precio_base = PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).get(item_seleccionado, 0)
         
         valor_bruto_input = st.number_input(
@@ -164,7 +160,6 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         st.warning(f"**Desc. Tarjeta ({COMISIONES_PAGO.get(metodo_pago, 0.00)*100:.0f}%):** ${resultados['desc_tarjeta']:,.0f}".replace(",", "."))
         
         desc_lugar_label = f"Desc. Fijo Lugar ({lugar_seleccionado})"
-        # Muestra el día de la semana si es AMAR AUSTRAL para clarificar
         if lugar_seleccionado == 'AMAR AUSTRAL':
             dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
             desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
@@ -201,30 +196,21 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                 st.balloons()
 
 # ===============================================
-# 4. DASHBOARD DE RESUMEN
-# ===============================================
-
-# ... (El resto del código de la sección 4 es idéntico a la versión anterior y es estable)
-# ...
-st.markdown("---")
-st.header("📊 Resumen y Análisis de Ingresos")
-
-df = st.session_state.atenciones_df
-# ===============================================
-# 4. DASHBOARD DE RESUMEN (CON MEJORAS Y FILTRO)
+# 4. DASHBOARD DE RESUMEN (CON FILTRO DE FECHAS)
 # ===============================================
 st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
 
 df = st.session_state.atenciones_df
 
-    if not df.empty:
+if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-    
+
     # ----------------------------------------------------
-    # FILTRO POR RANGO DE FECHA (NUEVA IMPLEMENTACIÓN)
+    # FILTRO POR RANGO DE FECHA (Mejora 6)
     # ----------------------------------------------------
     
+    # Calcular las fechas min/max disponibles
     min_date = df['Fecha'].min().date()
     max_date = df['Fecha'].max().date()
     
@@ -250,28 +236,18 @@ df = st.session_state.atenciones_df
         (df['Fecha'].dt.date <= fecha_fin)
     ]
     
-   if df_filtrado.empty:
+    if df_filtrado.empty:
         st.warning("No hay datos registrados en el rango de fechas seleccionado.")
-        # Usamos st.stop() para detener la ejecución de Streamlit de forma segura
+        # Usamos st.stop() para detener la ejecución de Streamlit de forma segura (CORRECCIÓN DE ERROR)
         st.stop()
-
-    # A partir de aquí, usamos df_filtrado en lugar de df
-    df = df_filtrado
-
-    # ----------------------------------------------------
-    # MÉTRICAS PRINCIPALES (KPIs) (APLICADAS A df_filtrado)
-    # ----------------------------------------------------
-    
-    def format_currency(value):
-        return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
-    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+    # Usamos el DataFrame filtrado para el resto de los cálculos
+    df = df_filtrado
     
-    # ... (El resto del código de las métricas, gráficos y tablas sigue abajo, 
-    # pero ahora usando el DataFrame 'df' que contiene los datos filtrados)
-    if not df.empty:
-    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
-
+    # ----------------------------------------------------
+    # MÉTRICAS PRINCIPALES (KPIs)
+    # ----------------------------------------------------
+    
     def format_currency(value):
         return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
@@ -305,12 +281,14 @@ df = st.session_state.atenciones_df
 
     st.markdown("---")
     
+    # Análisis Mensual
     st.subheader("📈 Evolución Mensual de Ingresos Líquidos")
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
     st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#4c78a8")
 
+    # Análisis por Lugar (Plotly)
     st.subheader("🥧 Distribución de Ingresos por Centro de Atención")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
     
@@ -324,6 +302,7 @@ df = st.session_state.atenciones_df
     fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
     st.plotly_chart(fig_lugar, use_container_width=True)
 
+    # Vista previa y Descarga de datos
     st.header("📋 Vista Previa de Datos Crudos")
     st.dataframe(df, use_container_width=True)
     
@@ -331,7 +310,7 @@ df = st.session_state.atenciones_df
     st.download_button(
         label="⬇️ Descargar Todos los Datos Registrados (CSV)",
         data=csv,
-        file_name='reporte_control_ingresos.csv',
+        file_name='reporte_control_ingresos_filtrado.csv',
         mime='text/csv',
     )
 else:
