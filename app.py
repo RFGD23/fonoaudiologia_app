@@ -203,20 +203,21 @@ st.header("📊 Resumen y Análisis de Ingresos")
 
 df = st.session_state.atenciones_df
 
+# Bloque principal que solo se ejecuta si hay datos en el DataFrame cargado
 if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
 
     # --- FILTROS DINÁMICOS EN LA BARRA LATERAL (Lugar e Ítem) ---
     st.sidebar.header("🔍 Filtros de Análisis")
     
-    # Filtro por Lugar
+    # 1. Filtro por Lugar
     lugares_disponibles = ['Todos'] + sorted(df['Lugar'].unique().tolist())
     filtro_lugar = st.sidebar.selectbox(
         "📍 Seleccionar Centro de Atención", 
         options=lugares_disponibles
     )
     
-    # Filtro por Ítem 
+    # 2. Filtro por Ítem (Dependiente de Lugar)
     if filtro_lugar != 'Todos':
         df_lugar = df[df['Lugar'] == filtro_lugar]
         items_disponibles = ['Todos'] + sorted(df_lugar['Ítem'].unique().tolist())
@@ -240,7 +241,7 @@ if not df.empty:
         df = df[df['Ítem'] == filtro_item]
     
     # ----------------------------------------------------
-    # FILTRO POR RANGO DE FECHA (Corregido: Manejo de datos vacíos)
+    # FILTRO POR RANGO DE FECHA (SOLUCIÓN DEFINITIVA DE ERROR)
     # ----------------------------------------------------
     
     # Si después de los filtros Lugar/Ítem el DF está vacío, detenemos la ejecución
@@ -248,28 +249,37 @@ if not df.empty:
         st.warning("No hay datos disponibles para la combinación de Lugar/Ítem seleccionada.")
         st.stop()
         
-    # --- CORRECCIÓN DE ERROR (Manejo de NaT/DataFrame vacío) ---
-    try:
-        # Intentamos obtener las fechas min y max del DF filtrado
-        min_date = df['Fecha'].min().date()
-        max_date = df['Fecha'].max().date()
-        
-        # Validación de seguridad: si las fechas son anormalmente antiguas (indicando error de Pandas)
-        if min_date.year < 2000: 
-            raise ValueError 
-            
-    except ValueError:
-        # Si hay un error (ej. el DF no contiene fechas válidas), usamos la fecha de hoy
+    # --- NUEVA LÓGICA DE VALIDACIÓN (Elimina NaT antes de calcular min/max) ---
+    
+    # 1. Crear un DataFrame con solo fechas válidas (no NaT)
+    df_valid_dates = df.dropna(subset=['Fecha'])
+
+    if df_valid_dates.empty:
+        # 2. Si no quedan fechas válidas, usamos la fecha de hoy como rango por defecto
         min_date = date.today()
         max_date = date.today()
-    # -----------------------------------------------------------
+    else:
+        # 3. Calculamos min/max solo en los datos válidos
+        min_date = df_valid_dates['Fecha'].min().date()
+        max_date = df_valid_dates['Fecha'].max().date()
+
+        # 4. Seguridad: corregir si por error la fecha mínima es inválida (ej. 1970)
+        if min_date.year < 2000:
+            min_date = date.today()
+            max_date = date.today()
+    # -------------------------------------------------------------------------
 
     st.subheader("Filtro de Periodo")
     col_start, col_end = st.columns(2)
     
+    # Aseguramos que la fecha inicial por defecto sea válida dentro del rango
+    fecha_default_inicio = min_date
+    if min_date > max_date:
+        fecha_default_inicio = max_date # Si por alguna razón min es mayor que max, usamos max
+        
     fecha_inicio = col_start.date_input(
         "📅 Fecha de Inicio", 
-        min_date, 
+        fecha_default_inicio, 
         min_value=min_date, 
         max_value=max_date
     )
@@ -356,7 +366,7 @@ if not df.empty:
     # ----------------------------------------------------
     st.header("📋 Gestión de Atenciones Registradas")
 
-    # Usamos el índice original para referenciar la eliminación en session_state.atenciones_df
+    # Usamos el índice original para referenciar la eliminación en st.session_state.atenciones_df
     df_display = df.copy() 
     
     st.subheader("Atenciones Registradas (Haga click en '🗑️' para eliminar)")
