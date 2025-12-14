@@ -6,7 +6,7 @@ import io
 import plotly.express as px 
 import json 
 import time 
-import base64 # Necesario para la función de fondo
+import base64 
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -120,7 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (CORREGIDO PARA SER DINÁMICO) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -142,8 +142,8 @@ def set_background(png_file):
     <style>
     .stApp {{
     background-image: url("data:image/png;base64,{bin_str}");
-    background-size: cover;
-    background-attachment: fixed;
+    background-size: cover; 
+    background-attachment: scroll; /* CAMBIO CLAVE: Imagen se mueve con el scroll */
     }}
     </style>
     '''
