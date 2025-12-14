@@ -209,7 +209,6 @@ def update_price_from_item_or_lugar():
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
     # 🚨 NOTA: NO reiniciamos el descuento adicional aquí, pero sí forzamos el nuevo valor bruto.
     
-# 🚨 NUEVA FUNCIÓN DE REACTIVIDAD 🚨
 def force_recalculate():
     """
     Función de callback simple para forzar el recálculo (rerun)
@@ -347,7 +346,7 @@ with tab_registro:
     # WIDGETS REACTIVOS FUERA DEL FORMULARIO 
     # ----------------------------------------------------------------------
 
-    col_reactivo_1, col_reactivo_2, col_reactivo_3 = st.columns(3)
+    col_reactivo_1, col_reactivo_2, col_reactivo_3, col_reactivo_4 = st.columns(4)
 
     # 1. SELECTBOX LUGAR
     with col_reactivo_1:
@@ -387,12 +386,26 @@ with tab_registro:
             min_value=0, 
             step=1000,
             key="form_valor_bruto", 
-            on_change=force_recalculate # 🚨 RECALCULAR AL CAMBIAR EL VALOR BRUTO
+            on_change=force_recalculate # RECALCULAR AL CAMBIAR EL VALOR BRUTO
         )
-        
+
+    # 4. DESCUENTO ADICIONAL (AHORA FUERA DEL FORM)
+    with col_reactivo_4:
+        st.number_input(
+            "✂️ **Polvo Mágico Extra (Ajuste)**", 
+            min_value=-500000, 
+            value=st.session_state.get('form_desc_adic_input', 0), 
+            step=1000, 
+            key="form_desc_adic_input",
+            on_change=force_recalculate, # RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
+            help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
+        )
+
     # ----------------------------------------------------------------------
     # FORMULARIO PARA DATOS RESTANTES Y BOTÓN DE ENVÍO
     # ----------------------------------------------------------------------
+    
+    # Se usa st.form para agrupar el botón de envío y los demás inputs
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles Adicionales y Cálculo Final", expanded=True):
             
@@ -405,6 +418,7 @@ with tab_registro:
             col1, col2 = st.columns([1, 1])
 
             with col1:
+                # Widgets simples sin on_change
                 fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha") 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 
@@ -416,19 +430,9 @@ with tab_registro:
                 
             with col2:
                 
-                # 🚨 IMPORTANTE: El Number Input de ajuste está dentro del form, PERO el key debe ser distinto
-                # al key usado para la inicialización.
-                desc_adicional_manual = st.number_input(
-                    "✂️ **Polvo Mágico Extra (Ajuste)**", 
-                    min_value=-500000, 
-                    value=st.session_state.get('form_desc_adic_input', 0), 
-                    step=1000, 
-                    key="form_desc_adic_input",
-                    on_change=force_recalculate, # 🚨 RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
-                    help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
-                )
-                
+                # Se obtienen los valores reactivos del session_state para el cálculo
                 desc_adicional_calc = st.session_state.form_desc_adic_input 
+                valor_bruto_calc = st.session_state.form_valor_bruto
                 
                 # Ejecutar el cálculo central en tiempo real. 
                 resultados = calcular_ingreso(
@@ -437,7 +441,7 @@ with tab_registro:
                     st.session_state.form_metodo_pago,
                     desc_adicional_calc,
                     fecha_atencion=st.session_state.form_fecha, 
-                    valor_bruto_override=st.session_state.form_valor_bruto 
+                    valor_bruto_override=valor_bruto_calc 
                 )
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
@@ -453,7 +457,7 @@ with tab_registro:
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
-                if current_lugar_upper in DESCUENTOS_REGLAS and current_day_name != "N/A":
+                if current_lugar_upper in DESCUENTOS_REGLAS:
                      if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
                          desc_lugar_label += f" (Regla: {current_day_name})"
                          is_rule_applied = True
@@ -876,7 +880,7 @@ with tab_dashboard:
                     min_value=0, 
                     step=1000,
                     key="edit_valor_bruto" ,
-                    on_change=force_recalculate # 🚨 RECALCULAR AL CAMBIAR EL VALOR BRUTO
+                    on_change=force_recalculate # RECALCULAR AL CAMBIAR EL VALOR BRUTO
                 )
 
                 edited_desc_adicional_manual = st.number_input(
@@ -885,7 +889,7 @@ with tab_dashboard:
                     value=st.session_state.edit_desc_adic, 
                     step=1000, 
                     key="edit_desc_adic",
-                    on_change=force_recalculate, # 🚨 RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
+                    on_change=force_recalculate, # RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
