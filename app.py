@@ -30,7 +30,6 @@ conn = st.connection(
     database="postgres",
     username="postgres", # <--- El username es solo 'postgres' para la conexión directa
     password="Domileo1702" 
-)
 
 # ... El resto del código de la función load_data_from_db() y el dashboard se mantienen ...
 )
