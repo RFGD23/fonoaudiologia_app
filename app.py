@@ -120,7 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (DINÁMICO Y TRANSPARENTE) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN ROBUSTA DE VISIBILIDAD) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -128,66 +128,68 @@ def get_base64_of_file(bin_file):
     if not os.path.exists(bin_file):
         st.warning(f"⚠️ Advertencia: No se encontró el archivo de fondo '{bin_file}'. El fondo no será visible.")
         return ""
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except Exception as e:
+        st.error(f"Error al leer el archivo de fondo: {e}")
+        return ""
 
 def set_background(png_file):
-    """Establece la imagen de fondo y la transparencia de los contenedores."""
+    """Establece la imagen de fondo usando CSS inyectado y transparencia."""
     bin_str = get_base64_of_file(png_file)
     if not bin_str:
         return
         
     # *************************************************************************
-    # CSS INYECTADO: AJUSTE DE FONDO DINÁMICO Y TRANSPARENCIA
+    # CSS INYECTADO: SOLUCIÓN ROBUSTA DE FONDO Y TRANSPARENCIA
     # *************************************************************************
     page_bg_img = f'''
     <style>
-    /* 1. Fondo de la Aplicación (DINÁMICO: se mueve con el scroll) */
-    [data-testid="stAppViewBlock"] {{
+    /* 1. Fondo de la Aplicación (Aplicado a la raíz HTML/BODY) */
+    html, body, [data-testid="stAppViewBlock"] {{
         background-image: url("data:image/png;base64,{bin_str}");
         background-size: cover; 
-        background-attachment: scroll; /* ¡Fondo se mueve con el scroll! */
+        background-attachment: scroll; /* Se mueve con el scroll */
         background-repeat: no-repeat;
         min-height: 100vh;
     }}
     
-    /* Aseguramos que el contenedor principal de Streamlit sea transparente */
+    /* 2. Aseguramos que el contenedor principal de Streamlit sea transparente */
     .stApp {{
         background-color: transparent !important; 
     }}
 
-
-    /* 2. HACE LOS CONTENEDORES PRINCIPALES Y EXPANDERS SEMITRANSPARENTES */
-    /* st.Expander y el contenedor principal (main content block) */
+    /* 3. Contenedores Principales (Expander, Bloques de Inputs, etc.) */
     .css-1r6dm1, .streamlit-expander {{ 
-        background-color: rgba(0, 0, 0, 0.4); /* Fondo oscuro semitransparente */
+        background-color: rgba(0, 0, 0, 0.5); /* Fondo oscuro semitransparente (ajuste la opacidad) */
         border-radius: 10px;
         padding: 10px;
     }} 
 
     /* Inputs (Text, Selectbox, Date, Number) */
     .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child {{
-        background-color: rgba(255, 255, 255, 0.1); /* Fondo muy claro y transparente para los inputs */
+        background-color: rgba(255, 255, 255, 0.1); 
         border-radius: 5px;
     }}
     
-    /* 3. Ajuste de las Métricas (KPIs) y Bloques */
+    /* 4. Métricas (KPIs) y Bloques */
     [data-testid="stMetric"], [data-testid="stVerticalBlock"] {{
-        background-color: rgba(0, 0, 0, 0.3); /* Fondo para métricas y bloques */
+        background-color: rgba(0, 0, 0, 0.4); 
         border-radius: 10px;
         padding: 10px;
     }}
     
-    /* 4. Barra Lateral (Sidebar) */
+    /* 5. Barra Lateral (Sidebar) */
     [data-testid="stSidebarContent"] {{
-        background-color: rgba(0, 0, 0, 0.7); /* Fondo oscuro semitransparente para mejor lectura */
+        background-color: rgba(0, 0, 0, 0.7); 
         padding-top: 50px;
     }}
     
-    /* 5. Fondo de las tablas y dataframes */
+    /* 6. Tablas y Dataframes */
     .stDataFrame, .stTable {{
-        background-color: rgba(0, 0, 0, 0.2); 
+        background-color: rgba(0, 0, 0, 0.3); 
     }}
     
     </style>
@@ -518,7 +520,7 @@ else:
     st.info("Aún no hay aventuras. ¡Registra el primer tesoro para ver el mapa!")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN FINAL DE VALOR BRUTO Y CÁLCULO)
+# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN DE ERROR Y DISEÑO)
 # ===============================================
 
 if st.session_state.edit_index is not None:
@@ -555,6 +557,8 @@ if st.session_state.edit_index is not None:
             except ValueError:
                 lugar_idx = 0
             
+            # --- CORRECCIÓN DE ERROR: SELECTBOX FUERA DEL FORMULARIO ---
+            # Este selectbox debe estar fuera del form para que el on_change funcione.
             edited_lugar_display = st.selectbox(
                 "📍 Castillo/Lugar de Atención", 
                 options=LUGARES, 
@@ -651,32 +655,55 @@ if st.session_state.edit_index is not None:
             )
             # ------------------------------------------------------------------
         
-        # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO
+        # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO (CORRECCIÓN DE ERROR)
+        # Los botones y la lógica de guardado sí deben estar dentro del st.form.
         with st.form("edit_form", clear_on_submit=False):
+            # Aseguramos que los valores sean accesibles dentro del form si es necesario
+            st.session_state.form_lugar = st.session_state.edit_lugar
+            st.session_state.form_item = st.session_state[item_key]
+            st.session_state.form_paciente = st.session_state.edit_paciente
+            st.session_state.form_metodo = st.session_state.edit_metodo
+            st.session_state.form_valor_bruto = st.session_state.edit_valor_bruto
+            st.session_state.form_desc_adic = st.session_state.edit_desc_adic
+            
             col_btn1, col_btn2 = st.columns([1, 1])
+            
+            submit_button = col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary")
+            cancel_button = col_btn2.form_submit_button("❌ Cancelar Edición")
 
-            if col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary"):
+
+            if submit_button:
+                # Recalculamos con los valores del estado de sesión finales
+                recalculo_final = calcular_ingreso(
+                    st.session_state.form_lugar, 
+                    st.session_state.form_item, 
+                    st.session_state.form_metodo, 
+                    st.session_state.form_desc_adic, 
+                    fecha_atencion=st.session_state.edit_fecha, 
+                    valor_bruto_override=st.session_state.form_valor_bruto 
+                )
+
                 st.session_state.atenciones_df.loc[index_to_edit] = {
                     "Fecha": st.session_state.edit_fecha.strftime('%Y-%m-%d'), 
-                    "Lugar": st.session_state.edit_lugar, 
-                    "Ítem": st.session_state[item_key], 
-                    "Paciente": st.session_state.edit_paciente, 
-                    "Método Pago": st.session_state.edit_metodo,
-                    "Valor Bruto": recalculo['valor_bruto'], 
-                    "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'], 
-                    "Desc. Tarjeta": recalculo['desc_tarjeta'], 
-                    "Desc. Adicional": st.session_state.edit_desc_adic,
-                    "Total Recibido": recalculo['total_recibido'] 
+                    "Lugar": st.session_state.form_lugar, 
+                    "Ítem": st.session_state.form_item, 
+                    "Paciente": st.session_state.form_paciente, 
+                    "Método Pago": st.session_state.form_metodo,
+                    "Valor Bruto": recalculo_final['valor_bruto'], 
+                    "Desc. Fijo Lugar": recalculo_final['desc_fijo_lugar'], 
+                    "Desc. Tarjeta": recalculo_final['desc_tarjeta'], 
+                    "Desc. Adicional": st.session_state.form_desc_adic,
+                    "Total Recibido": recalculo_final['total_recibido'] 
                 }
                 
                 save_data(st.session_state.atenciones_df)
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
-                st.success(f"🎉 Aventura para {st.session_state.edit_paciente} actualizada exitosamente. Recargando el mapa...")
+                st.success(f"🎉 Aventura para {st.session_state.form_paciente} actualizada exitosamente. Recargando el mapa...")
                 time.sleep(0.5) 
                 st.rerun()
                 
-            if col_btn2.form_submit_button("❌ Cancelar Edición"):
+            if cancel_button:
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
                 st.rerun()
