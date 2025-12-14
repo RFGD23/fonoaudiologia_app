@@ -698,7 +698,17 @@ with tab_config:
     # 6. ADMINISTRACIÓN DE DATOS MAESTROS (JSON)
     # ===============================================
     st.header("⚙️ Configuración de Datos Maestros")
-    st.markdown("Aquí puede editar los precios base, descuentos fijos por lugar y comisiones de pago.")
+    st.markdown("⚠️ **¡Atención!** Esta sección modifica los precios base, descuentos y comisiones. Se requiere una clave de seguridad.")
+    
+    # --- Clave de Seguridad (Variable para todo el módulo) ---
+    CLAVE_MAESTRA = "DOMI1702"
+    
+    # Contenedor para la clave que se usará en todas las pestañas de guardado
+    clave_ingresada = st.text_input(
+        "🔑 Ingrese la Clave Maestra para Guardar Cambios", 
+        type="password", 
+        key="admin_password"
+    )
     
     tab_precios, tab_descuentos, tab_comisiones = st.tabs(["💰 Precios Base/Ítems", "📍 Descuentos Fijos por Lugar", "💳 Comisiones por Pago"])
 
@@ -730,29 +740,34 @@ with tab_config:
             key="precios_data_editor"
         )
         
+        # --- VERIFICACIÓN DE CLAVE AL GUARDAR ---
         if st.button("💾 Guardar Precios Actualizados", type="primary", key="save_precios"):
-            try:
-                # Reconstruir el diccionario PRECIOS_BASE_CONFIG a partir del DataFrame editado
-                new_precios_config = {}
-                for index, row in edited_df.iterrows():
-                    lugar = str(row['Castillo/Lugar']).upper() # Asegurar mayúsculas para las claves
-                    item = str(row['Poción/Ítem'])
-                    precio = int(row['Precio Base ($)'])
-                    
-                    if lugar and item: # Asegurar que el nombre del lugar e ítem no esté vacío
-                        if lugar not in new_precios_config:
-                            new_precios_config[lugar] = {}
-                        new_precios_config[lugar][item] = precio
+            if clave_ingresada == CLAVE_MAESTRA:
+                try:
+                    # Lógica de reconstrucción del diccionario y guardado
+                    new_precios_config = {}
+                    for index, row in edited_df.iterrows():
+                        lugar = str(row['Castillo/Lugar']).upper() # Asegurar mayúsculas para las claves
+                        item = str(row['Poción/Ítem'])
+                        precio = int(row['Precio Base ($)'])
+                        
+                        if lugar and item: # Asegurar que el nombre del lugar e ítem no esté vacío
+                            if lugar not in new_precios_config:
+                                new_precios_config[lugar] = {}
+                            new_precios_config[lugar][item] = precio
 
-                # Guardar en JSON y recargar la aplicación
-                save_config(new_precios_config, PRECIOS_FILE)
-                st.success("✅ Precios y Castillos/Lugares actualizados correctamente.")
-                st.cache_data.clear() # Limpiar caché para forzar la recarga de datos maestros
-                time.sleep(1)
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"❌ Error al guardar los precios: {e}")
+                    # Guardar en JSON y recargar la aplicación
+                    save_config(new_precios_config, PRECIOS_FILE)
+                    st.success("✅ Precios y Castillos/Lugares actualizados correctamente.")
+                    st.cache_data.clear() # Limpiar caché para forzar la recarga de datos maestros
+                    time.sleep(1)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error al guardar los precios: {e}")
+            else:
+                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
+
 
     with tab_descuentos:
         st.subheader("Editar Descuentos Fijos por Castillo/Lugar")
@@ -779,25 +794,30 @@ with tab_config:
             key="descuentos_data_editor"
         )
 
+        # --- VERIFICACIÓN DE CLAVE AL GUARDAR ---
         if st.button("💾 Guardar Descuentos Fijos", type="primary", key="save_descuentos"):
-            try:
-                new_descuentos_config = {}
-                for index, row in edited_df_desc.iterrows():
-                    lugar = str(row['Castillo/Lugar']).upper()
-                    descuento = int(row['Desc. Fijo ($)'])
+            if clave_ingresada == CLAVE_MAESTRA:
+                try:
+                    # Lógica de reconstrucción del diccionario y guardado
+                    new_descuentos_config = {}
+                    for index, row in edited_df_desc.iterrows():
+                        lugar = str(row['Castillo/Lugar']).upper()
+                        descuento = int(row['Desc. Fijo ($)'])
+                        
+                        if lugar:
+                            new_descuentos_config[lugar] = descuento
                     
-                    if lugar:
-                        new_descuentos_config[lugar] = descuento
-                
-                # Guardar en JSON y recargar
-                save_config(new_descuentos_config, DESCUENTOS_FILE)
-                st.success("✅ Descuentos fijos por lugar actualizados correctamente.")
-                st.cache_data.clear()
-                time.sleep(1)
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"❌ Error al guardar los descuentos: {e}")
+                    # Guardar en JSON y recargar
+                    save_config(new_descuentos_config, DESCUENTOS_FILE)
+                    st.success("✅ Descuentos fijos por lugar actualizados correctamente.")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error al guardar los descuentos: {e}")
+            else:
+                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
 
     with tab_comisiones:
         st.subheader("Editar Comisiones por Método de Pago")
@@ -824,22 +844,27 @@ with tab_config:
             key="comisiones_data_editor"
         )
         
+        # --- VERIFICACIÓN DE CLAVE AL GUARDAR ---
         if st.button("💾 Guardar Comisiones de Pago", type="primary", key="save_comisiones"):
-            try:
-                new_comisiones_config = {}
-                for index, row in edited_df_com.iterrows():
-                    metodo = str(row['Método de Pago']).upper()
-                    comision_pct = float(row['Comisión (%)']) / 100.0 # Convertir porcentaje a decimal
+            if clave_ingresada == CLAVE_MAESTRA:
+                try:
+                    # Lógica de reconstrucción del diccionario y guardado
+                    new_comisiones_config = {}
+                    for index, row in edited_df_com.iterrows():
+                        metodo = str(row['Método de Pago']).upper()
+                        comision_pct = float(row['Comisión (%)']) / 100.0 # Convertir porcentaje a decimal
+                        
+                        if metodo:
+                            new_comisiones_config[metodo] = comision_pct
                     
-                    if metodo:
-                        new_comisiones_config[metodo] = comision_pct
-                
-                # Guardar en JSON y recargar
-                save_config(new_comisiones_config, COMISIONES_FILE)
-                st.success("✅ Comisiones por método de pago actualizadas correctamente.")
-                st.cache_data.clear()
-                time.sleep(1)
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"❌ Error al guardar las comisiones: {e}")
+                    # Guardar en JSON y recargar
+                    save_config(new_comisiones_config, COMISIONES_FILE)
+                    st.success("✅ Comisiones por método de pago actualizadas correctamente.")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error al guardar las comisiones: {e}")
+            else:
+                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
