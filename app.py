@@ -15,22 +15,20 @@ st.set_page_config(
 # 2. FUNCIONES DE PERSISTENCIA (CONEXIÓN Y CARGA)
 # ===============================================
 
-# ¡CONEXIÓN DIRECTA ESTABILIZADA!
-# Se corrigen el Host y el Username para la conexión directa a 5432.
+# ÚLTIMA PRUEBA DE CONEXIÓN: Usando el host directo, pero el username largo.
 conn = st.connection(
-    "supabase_direct",  
+    "supabase_final_attempt",  
     type="sql",
     dialect="postgresql",
-    # *** CAMBIO CLAVE 1: HOST sin prefijo 'db.' ***
+    # Host sin el Pooler
     host="emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
     database="postgres",
-    # *** CAMBIO CLAVE 2: USERNAME SIMPLE 'postgres' ***
-    username="postgres", 
-    # El password parece tener mayúscula, se mantiene como está si es correcta
+    # *** USAMOS EL USERNAME LARGO CON EL HOST DIRECTO ***
+    username="postgres.emnqztaxybhbmkuryhem", 
     password="DomiLeo1702" 
 )
-# ...
+# ... el resto del código es el mismo ...
 
 @st.cache_data(ttl=3600)
 def load_data_from_db():
