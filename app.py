@@ -145,7 +145,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
-# <<< CORRECCIÓN DE FLUJO CRÍTICA: MEJORA DEL CALLBACK DE PRECIO >>>
 def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
@@ -190,13 +189,11 @@ def update_price_from_item_or_lugar():
     
     # OPCIONAL: Resetear el descuento adicional al cambiar la base
     st.session_state.form_desc_adic = 0
-# <<< FIN CORRECCIÓN DE FLUJO CRÍTICA >>>
 
 def update_edited_lugar():
     """Actualiza el lugar seleccionado en el modal de edición."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
-# <<< CALLBACK PARA EL FORMULARIO DE EDICIÓN >>>
 def update_edit_price():
     """
     Callback llamado cuando 'edit_lugar' o 'edit_item' cambia en el modal de edición.
@@ -309,7 +306,7 @@ with tab_registro:
     if 'form_desc_adic' not in st.session_state:
         st.session_state.form_desc_adic = 0
     # ----------------------------------------------------------------------
-    # WIDGETS REACTIVOS FUERA DEL FORMULARIO (Solución al error StreamlitInvalidFormCallbackError)
+    # WIDGETS REACTIVOS FUERA DEL FORMULARIO 
     # ----------------------------------------------------------------------
 
     col_reactivo_1, col_reactivo_2, col_reactivo_3 = st.columns(3)
@@ -332,7 +329,6 @@ with tab_registro:
         lugar_key_current = st.session_state.form_lugar.upper()
         items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
         
-        # AJUSTE: Usar el valor del state que pudo ser forzado por el callback
         item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
         
         try:
@@ -343,17 +339,16 @@ with tab_registro:
         st.selectbox("📋 Poción/Procedimiento", 
                      options=items_filtrados_current, 
                      key="form_item",
-                     index=item_index, # Usa el índice ya calculado
+                     index=item_index, 
                      on_change=update_price_from_item_or_lugar) 
     
-    # 3. VALOR BRUTO
+    # 3. VALOR BRUTO (CORREGIDO: Eliminamos el argumento 'value=')
     with col_reactivo_3:
         st.number_input(
             "💰 **Valor Bruto (Recompensa)**", 
             min_value=0, 
-            value=st.session_state.form_valor_bruto, 
             step=1000,
-            key="form_valor_bruto" 
+            key="form_valor_bruto" # Streamlit usará el valor de Session State
         )
         
     # ----------------------------------------------------------------------
@@ -814,19 +809,18 @@ with tab_dashboard:
             
             with col_edit2_out: 
                 
-                # VALOR BRUTO DE EDICIÓN (Usando el valor del Session State)
+                # VALOR BRUTO DE EDICIÓN (CORREGIDO: Eliminamos el argumento 'value=')
                 edited_valor_bruto = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
-                    value=st.session_state.edit_valor_bruto, 
                     step=1000,
-                    key="edit_valor_bruto" 
+                    key="edit_valor_bruto" # Streamlit usará el valor de Session State
                 )
 
                 edited_desc_adicional_manual = st.number_input(
                     "✂️ **Polvo Mágico Extra (Ajuste)**", 
                     min_value=-500000, 
-                    value=st.session_state.edit_desc_adic, # Usando el valor inicializado o modificado
+                    value=st.session_state.edit_desc_adic, # Este no genera advertencia ya que su valor inicial es explícito
                     step=1000, 
                     key="edit_desc_adic",
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
