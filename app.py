@@ -15,7 +15,7 @@ DATA_FILE = 'atenciones_registradas.csv'
 PRECIOS_FILE = 'precios_base.json'
 DESCUENTOS_FILE = 'descuentos_lugar.json'
 COMISIONES_FILE = 'comisiones_pago.json'
-REGLAS_FILE = 'descuentos_reglas.json' # <-- NUEVO ARCHIVO
+REGLAS_FILE = 'descuentos_reglas.json' 
 
 def load_config(filename):
     """Carga la configuración desde un archivo JSON."""
@@ -37,13 +37,12 @@ try:
     PRECIOS_BASE_CONFIG = load_config(PRECIOS_FILE)
     DESCUENTOS_LUGAR = load_config(DESCUENTOS_FILE)
     COMISIONES_PAGO = load_config(COMISIONES_FILE)
-    DESCUENTOS_REGLAS = load_config(REGLAS_FILE) # <-- Carga de las nuevas reglas
+    DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
 except:
     # Fallback si no existen los archivos JSON o hay error
     PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ItemA': 25000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
-    # Fallback para las nuevas reglas si no existe el archivo
     DESCUENTOS_REGLAS = {
         'AMAR AUSTRAL': {
             'LUNES': 0, 'MARTES': 8000, 'MIÉRCOLES': 0, 
@@ -90,6 +89,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             'total_recibido': 0
         }
     
+    # El lugar (lugar_key) ya viene en MAYÚSCULAS desde el formulario de registro
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
@@ -149,34 +149,33 @@ def set_dark_mode_theme():
     <style>
     /* 1. Fondo principal: Streamlit ya usa gris oscuro por defecto, lo respetamos */
     .stApp, [data-testid="stAppViewBlock"], .main {
-        background-color: transparent !important; /* Aseguramos que la base use el fondo de Streamlit */
+        background-color: transparent !important; 
         background-image: none !important;
     }
     
     /* 2. Barra Lateral (Sidebar) - Le damos un fondo ligeramente más opaco y oscuro */
     [data-testid="stSidebarContent"] {
-        background-color: rgba(30, 30, 30, 0.9) !important; /* Gris oscuro semi-transparente */
-        color: white; /* Aseguramos texto blanco */
+        background-color: rgba(30, 30, 30, 0.9) !important; 
+        color: white; 
     }
 
     /* 3. Bloques de Contenido (Forms, Expander, Metrics) */
-    /* Usamos un color negro semi-transparente para que floten sobre el fondo */
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
     .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child { 
-        background-color: rgba(10, 10, 10, 0.6) !important; /* Negro muy suave, semi-transparente */
+        background-color: rgba(10, 10, 10, 0.6) !important; 
         border-radius: 10px;
         padding: 10px;
     } 
 
     /* 4. Tablas y Dataframes */
     .stDataFrame, .stTable {
-        background-color: rgba(0, 0, 0, 0.4) !important; /* Negro más transparente para tablas */
+        background-color: rgba(0, 0, 0, 0.4) !important; 
     }
     
     /* 5. Asegurar que el texto sea claro sobre el fondo oscuro */
     h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] *, [data-testid="stHeader"] * { 
-        color: white !important; /* Forzar color blanco para títulos y labels */
+        color: white !important; 
     }
 
     /* 6. Ajuste para textos en Expander */
@@ -242,14 +241,19 @@ with tab_registro:
             fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="new_fecha")
             lugar_seleccionado = st.selectbox("📍 Castillo/Lugar de Atención", options=LUGARES, key="new_lugar")
             
-            items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).keys())
+            # --- CORRECCIÓN DE PRECIOS BASE: Asegurar que el lugar esté en MAYÚSCULAS ---
+            lugar_key = lugar_seleccionado.upper() if lugar_seleccionado else ''
+            
+            # Obtener ítems filtrados usando la clave asegurada en MAYÚSCULAS
+            items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
             item_seleccionado = st.selectbox("📋 Poción/Procedimiento", options=items_filtrados, key="new_item")
             
             paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="new_paciente")
             metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="new_metodo_pago")
 
         with col2:
-            precio_base = PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).get(item_seleccionado, 0)
+            # --- CORRECCIÓN DE PRECIOS BASE: Usar la clave en MAYÚSCULAS para el precio base ---
+            precio_base = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado, 0)
             
             valor_bruto_input = st.number_input(
                 "💰 **Valor Bruto (Recompensa)**", 
@@ -270,7 +274,7 @@ with tab_registro:
             
             # Ejecutar el cálculo central en tiempo real
             resultados = calcular_ingreso(
-                lugar_seleccionado, 
+                lugar_key, # Usamos la clave en MAYÚSCULAS
                 item_seleccionado, 
                 metodo_pago, 
                 desc_adicional_manual,
@@ -565,7 +569,7 @@ with tab_dashboard:
                 except ValueError:
                     lugar_idx = 0
                 
-                # ** SELECTBOX DE LUGAR DEBE ESTAR FUERA DEL FORMULARIO **
+                # SELECTBOX DE LUGAR 
                 edited_lugar_display = st.selectbox(
                     "📍 Castillo/Lugar de Atención", 
                     options=LUGARES, 
@@ -573,8 +577,10 @@ with tab_dashboard:
                     key="edit_lugar", 
                     on_change=update_edited_lugar 
                 )
-
-                items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
+                
+                # CLAVE EN MAYÚSCULAS PARA FILTRAR ÍTEMS
+                lugar_key_edit = st.session_state.edit_lugar.upper()
+                items_edit = list(PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).keys())
                 
                 try:
                     current_item_index = items_edit.index(data_to_edit['Ítem'])
@@ -601,12 +607,12 @@ with tab_dashboard:
             with col_edit2_out: 
                 
                 # --- MANEJO DEL VALOR BRUTO ---
-                current_lugar = st.session_state.edit_lugar
+                current_lugar_key = st.session_state.edit_lugar.upper()
                 current_item = st.session_state[item_key]
-                precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar, {}).get(current_item, 0)
+                precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar_key, {}).get(current_item, 0)
                 
                 if ('edit_valor_bruto' not in st.session_state or 
-                    st.session_state.edit_lugar != data_to_edit['Lugar'] or 
+                    current_lugar_key != data_to_edit['Lugar'].upper() or # Revisar si el lugar ha cambiado
                     st.session_state[item_key] != data_to_edit['Ítem']):
                     
                     initial_valor_bruto = int(precio_base_sugerido)
@@ -636,7 +642,7 @@ with tab_dashboard:
                 # ------------------------------------------------------------------
                 
                 recalculo = calcular_ingreso(
-                    st.session_state.edit_lugar, 
+                    current_lugar_key, # Usamos la clave en MAYÚSCULAS
                     st.session_state[item_key], 
                     st.session_state.edit_metodo, 
                     st.session_state.edit_desc_adic, 
@@ -649,7 +655,7 @@ with tab_dashboard:
                 )
                 
                 desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
-                if st.session_state.edit_lugar in DESCUENTOS_REGLAS:
+                if st.session_state.edit_lugar.upper() in DESCUENTOS_REGLAS:
                     dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                     desc_lugar_label += f" ({dias_semana.get(st.session_state.edit_fecha.weekday())})" 
 
@@ -680,7 +686,7 @@ with tab_dashboard:
                 if submit_button:
                     # Recalculamos con los valores del estado de sesión finales
                     recalculo_final = calcular_ingreso(
-                        st.session_state.form_lugar, 
+                        st.session_state.form_lugar.upper(), # Usar la clave en MAYÚSCULAS para el cálculo final
                         st.session_state.form_item, 
                         st.session_state.form_metodo, 
                         st.session_state.form_desc_adic, 
@@ -734,7 +740,7 @@ with tab_config:
         "💰 Precios Base/Ítems", 
         "📍 Descuentos Fijos por Lugar", 
         "💳 Comisiones por Pago",
-        "📅 Reglas Condicionales" # <-- NUEVA PESTAÑA
+        "📅 Reglas Condicionales" 
     ])
 
     with tab_precios:
@@ -772,11 +778,11 @@ with tab_config:
                     # Lógica de reconstrucción del diccionario y guardado
                     new_precios_config = {}
                     for index, row in edited_df.iterrows():
-                        lugar = str(row['Castillo/Lugar']).upper() # Asegurar mayúsculas para las claves
+                        lugar = str(row['Castillo/Lugar']).upper() # Asegurar mayúsculas para las claves al guardar
                         item = str(row['Poción/Ítem'])
                         precio = int(row['Precio Base ($)'])
                         
-                        if lugar and item: # Asegurar que el nombre del lugar e ítem no esté vacío
+                        if lugar and item: 
                             if lugar not in new_precios_config:
                                 new_precios_config[lugar] = {}
                             new_precios_config[lugar][item] = precio
@@ -784,7 +790,7 @@ with tab_config:
                     # Guardar en JSON y recargar la aplicación
                     save_config(new_precios_config, PRECIOS_FILE)
                     st.success("✅ Precios y Castillos/Lugares actualizados correctamente.")
-                    st.cache_data.clear() # Limpiar caché para forzar la recarga de datos maestros
+                    st.cache_data.clear() 
                     time.sleep(1)
                     st.rerun()
                     
