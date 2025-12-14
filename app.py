@@ -136,42 +136,8 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
-
-def update_valor_bruto_on_item_change():
-    """
-    Callback: FUERZA la actualización del valor bruto sugerido cuando cambia 
-    el ítem o el lugar en el formulario de registro.
-    
-    Asegura la actualización del precio incluso si el ítem seleccionado por defecto 
-    no cambió de índice (corrección del problema reportado).
-    """
-    lugar_key = st.session_state.new_lugar.upper()
-    
-    # Obtener la lista de ítems disponibles para el nuevo lugar
-    items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
-    
-    # 1. Asegurar que 'new_item' esté dentro de los ítems del nuevo lugar
-    item_seleccionado = st.session_state.new_item
-    
-    if item_seleccionado not in items_disponibles and items_disponibles:
-        # Si el ítem no existe en el nuevo lugar, forzamos la selección del primer ítem
-        st.session_state.new_item = items_disponibles[0]
-        item_seleccionado = items_disponibles[0]
-        
-    elif not items_disponibles:
-        # Si no hay ítems, el precio es 0
-        st.session_state.new_valor_bruto = 0
-        return
-
-    # 2. Calcular el precio base usando el ítem seleccionado (que ahora es válido)
-    precio_base = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado, 0)
-    
-    # 3. Asignar el nuevo valor al widget 'new_valor_bruto' en el estado de sesión
-    st.session_state.new_valor_bruto = int(precio_base)
-
-
 def update_edited_lugar():
-    """Actualiza el lugar seleccionado en el modal de edición."""
+    """Actualiza el lugar seleccionado en el modal de edición (Sigue siendo necesario para la edición)."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
@@ -265,26 +231,6 @@ if 'edit_index' not in st.session_state:
 if 'edited_lugar_state' not in st.session_state:
     st.session_state.edited_lugar_state = None 
 
-# --- INICIALIZACIÓN CRÍTICA DEL ESTADO DE SESIÓN PARA CALLBACKS ---
-# Aseguramos que las claves existan antes de que los callbacks intenten leerlas.
-if LUGARES:
-    default_lugar = LUGARES[0]
-    default_lugar_key = default_lugar.upper()
-    default_items = list(PRECIOS_BASE_CONFIG.get(default_lugar_key, {}).keys())
-    default_item = default_items[0] if default_items else ''
-    default_price = PRECIOS_BASE_CONFIG.get(default_lugar_key, {}).get(default_item, 0)
-    
-    # Inicializamos solo si no existen.
-    if 'new_lugar' not in st.session_state:
-        st.session_state.new_lugar = default_lugar
-        
-    if 'new_item' not in st.session_state:
-        st.session_state.new_item = default_item
-        
-    if 'new_valor_bruto' not in st.session_state:
-        st.session_state.new_valor_bruto = int(default_price)
-# ------------------------------------------------------------------
-
 # --- Pestañas Principales ---
 tab_registro, tab_dashboard, tab_config = st.tabs(["📝 Registrar Aventura", "📊 Mapa del Tesoro", "⚙️ Configuración Maestra"])
 
@@ -293,71 +239,66 @@ with tab_registro:
     st.subheader("🎉 Nueva Aventura de Ingreso (Atención)")
     
     # --- USAR st.form PARA MEJOR MANEJO DE ENVIOS SIN F5 ---
-    # Usamos un key para evitar problemas de re-renderizado. clear_on_submit=True LIMPIA los inputs.
+    # clear_on_submit=True limpia los inputs después del envío.
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles del Registro", expanded=True):
+            
+            # --- LÓGICA DE CÁLCULO DE VALOR SUGERIDO EN CADA RERUN ---
+            
+            # 1. Obtener el lugar seleccionado o su valor por defecto (para calcular el precio base)
+            # Intentamos obtener el valor del selectbox. Si no existe (primer ciclo), usamos el default.
+            lugar_seleccionado_key = st.session_state.get('form_lugar', LUGARES[0] if LUGARES else '')
+            lugar_key = lugar_seleccionado_key.upper()
+            
+            # 2. Filtrar ítems y obtener el ítem seleccionado o su valor por defecto
+            items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
+            item_seleccionado_key = st.session_state.get('form_item', items_filtrados[0] if items_filtrados else '')
+            
+            # 3. Calcular el precio sugerido
+            precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado_key, 0)
+            
+            # -------------------------------------------------------------------------------------
+
             col1, col2 = st.columns([1, 1])
 
-            # NOTA: Usamos nuevas claves de sesión (e.g., 'form_fecha') dentro del form
-            # y usamos los callbacks para las claves 'new_...' de cálculo.
-
             with col1:
-                # La fecha no se resetea al enviar, así que podemos mantener 'form_fecha'
+                # La fecha se inicializa y guarda en 'form_fecha'
                 fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha")
                 
-                # 1. SELECTBOX LUGAR (con Callback)
+                # 1. SELECTBOX LUGAR (SIN CALLBACK - El cambio de valor recalcula el precio en el siguiente rerun)
                 try:
-                    lugar_index = LUGARES.index(st.session_state.new_lugar)
+                    lugar_index = LUGARES.index(lugar_seleccionado_key)
                 except ValueError:
                     lugar_index = 0
 
-                # Usamos una clave nueva ('form_lugar') para el widget dentro del form, 
-                # pero copiamos el valor a 'new_lugar' en on_change para que el callback funcione.
-                def update_lugar_and_price():
-                    st.session_state.new_lugar = st.session_state.form_lugar
-                    update_valor_bruto_on_item_change()
-                    
                 lugar_seleccionado = st.selectbox("📍 Castillo/Lugar de Atención", 
                                                 options=LUGARES, 
                                                 key="form_lugar",
-                                                index=lugar_index,
-                                                on_change=update_lugar_and_price)
+                                                index=lugar_index)
                 
-                # --- CLAVE EN MAYÚSCULAS ---
-                lugar_key = lugar_seleccionado.upper() if lugar_seleccionado else ''
-                
-                # Obtener ítems filtrados 
-                items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
-                
-                # 2. SELECTBOX ÍTEM (con Callback)
+                # 2. SELECTBOX ÍTEM (SIN CALLBACK)
                 try:
-                    item_index = items_filtrados.index(st.session_state.new_item)
+                    # Usamos el valor de la clave 'form_item' del ciclo anterior para mantener la selección
+                    item_index = items_filtrados.index(item_seleccionado_key)
                 except ValueError:
+                    # Si el ítem previo no está en la nueva lista (por cambio de lugar), usamos el índice 0
                     item_index = 0
-
-                # Similar al lugar, usamos un intermediario.
-                def update_item_and_price():
-                    st.session_state.new_item = st.session_state.form_item
-                    update_valor_bruto_on_item_change()
 
                 item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
                                                 options=items_filtrados, 
                                                 key="form_item",
-                                                index=item_index,
-                                                on_change=update_item_and_price)
+                                                index=item_index)
                 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago")
 
             with col2:
-                # El widget number_input también debe usar una clave nueva ('form_valor_bruto')
-                # y su valor inicial se sigue extrayendo de 'new_valor_bruto' (calculado por el callback).
                 
-                # Nota: Si el usuario edita el valor, se almacena en 'form_valor_bruto' para el cálculo final.
+                # Usamos el precio sugerido/calculado para inicializar el number_input, pero permitimos override
                 valor_bruto_input = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
-                    value=int(st.session_state.new_valor_bruto), 
+                    value=int(precio_base_sugerido), # Usamos el valor calculado arriba
                     step=1000,
                     key="form_valor_bruto" 
                 )
@@ -371,12 +312,15 @@ with tab_registro:
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
-                # Ejecutar el cálculo central en tiempo real
+                # Ejecutar el cálculo central en tiempo real (con los valores actuales de los widgets)
+                lugar_key_calc = st.session_state.form_lugar.upper()
+                item_calc = st.session_state.form_item
+                
                 resultados = calcular_ingreso(
-                    lugar_key, 
-                    item_seleccionado, 
-                    st.session_state.form_metodo_pago, # Usamos la clave del radio button del form
-                    st.session_state.form_desc_adic,  # Usamos la clave del number input del form
+                    lugar_key_calc, 
+                    item_calc, 
+                    st.session_state.form_metodo_pago,
+                    st.session_state.form_desc_adic,  
                     fecha_atencion=st.session_state.form_fecha, 
                     valor_bruto_override=st.session_state.form_valor_bruto
                 )
@@ -385,12 +329,12 @@ with tab_registro:
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
                 # Etiqueta dinámica para el descuento fijo/condicional
-                desc_lugar_label = f"Tributo al Castillo ({lugar_seleccionado})"
-                if lugar_seleccionado.upper() in DESCUENTOS_REGLAS:
+                desc_lugar_label = f"Tributo al Castillo ({st.session_state.form_lugar})"
+                if st.session_state.form_lugar.upper() in DESCUENTOS_REGLAS:
                     dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                     desc_lugar_label += f" ({dias_semana.get(st.session_state.form_fecha.weekday())})" 
 
-                st.info(f"**Tributo al Castillo ({lugar_seleccionado}):** {format_currency(resultados['desc_fijo_lugar'])}")
+                st.info(f"**Tributo al Castillo ({st.session_state.form_lugar}):** {format_currency(resultados['desc_fijo_lugar'])}")
                 
                 st.markdown("###")
                 st.success(
@@ -407,7 +351,6 @@ with tab_registro:
             if submit_button:
                 if st.session_state.form_paciente == "":
                     st.error("Por favor, ingresa el nombre del paciente.")
-                    # NO usar st.rerun, dejar que el formulario maneje el reintento.
                 else:
                     # Usamos los valores finales del estado de sesión del formulario
                     final_lugar_key = st.session_state.form_lugar.upper()
@@ -435,15 +378,11 @@ with tab_registro:
                         "Total Recibido": resultados_finales['total_recibido']
                     }
                     
+                    # Guardar los datos y forzar un re-run limpio
                     st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                     save_data(st.session_state.atenciones_df)
                     st.success(f"🎉 ¡Aventura registrada para {st.session_state.form_paciente}! El tesoro es {format_currency(resultados_finales['total_recibido'])}")
                     
-                    # No necesitamos limpiar las claves 'new_' aquí, ya que 'clear_on_submit=True'
-                    # limpiará los widgets y los callbacks se encargarán de inicializar los valores
-                    # de 'new_' correctamente en la próxima ejecución.
-                    
-                    # Forzamos una recarga limpia al finalizar para actualizar la tabla y los KPIs
                     time.sleep(0.5)
                     st.rerun() 
 
@@ -753,7 +692,7 @@ with tab_dashboard:
                 except ValueError:
                     lugar_idx = 0
                 
-                # SELECTBOX DE LUGAR 
+                # SELECTBOX DE LUGAR (CON CALLBACK para actualizar el estado intermedio)
                 edited_lugar_display = st.selectbox(
                     "📍 Castillo/Lugar de Atención", 
                     options=LUGARES, 
@@ -771,7 +710,7 @@ with tab_dashboard:
                 except ValueError:
                     current_item_index = 0
                 
-                item_key = f"edit_item_for_{st.session_state.edited_lugar_state}" 
+                item_key = "edit_item" 
                 
                 edited_item_display = st.selectbox(
                     "📋 Poción/Procedimiento", 
@@ -791,18 +730,10 @@ with tab_dashboard:
             with col_edit2_out: 
                 
                 # --- MANEJO DEL VALOR BRUTO ---
-                current_lugar_key = st.session_state.edit_lugar.upper()
-                current_item = st.session_state[item_key]
-                precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar_key, {}).get(current_item, 0)
                 
-                # Inicializamos el valor bruto de edición con el precio base si hay inconsistencia o es la primera vez.
-                if ('edit_valor_bruto' not in st.session_state or 
-                    current_lugar_key != data_to_edit['Lugar'].upper() or 
-                    st.session_state[item_key] != data_to_edit['Ítem']):
-                    
+                # Inicializamos el valor bruto de edición
+                if 'edit_valor_bruto' not in st.session_state:
                     initial_valor_bruto = int(data_to_edit['Valor Bruto'])
-                    st.session_state.edit_valor_bruto = initial_valor_bruto
-                    
                 else:
                     initial_valor_bruto = st.session_state.edit_valor_bruto
                     
@@ -827,8 +758,8 @@ with tab_dashboard:
                 # ------------------------------------------------------------------
                 
                 recalculo = calcular_ingreso(
-                    current_lugar_key, # Usamos la clave en MAYÚSCULAS
-                    st.session_state[item_key], 
+                    st.session_state.edit_lugar.upper(), 
+                    st.session_state.edit_item, 
                     st.session_state.edit_metodo, 
                     st.session_state.edit_desc_adic, 
                     fecha_atencion=st.session_state.edit_fecha, 
@@ -852,15 +783,8 @@ with tab_dashboard:
                 )
                 # ------------------------------------------------------------------
             
-            # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO
+            # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO DE EDICIÓN
             with st.form("edit_form", clear_on_submit=False):
-                # Clonamos valores finales del estado de sesión para el guardado dentro del form
-                st.session_state.form_lugar = st.session_state.edit_lugar
-                st.session_state.form_item = st.session_state[item_key]
-                st.session_state.form_paciente = st.session_state.edit_paciente
-                st.session_state.form_metodo = st.session_state.edit_metodo
-                st.session_state.form_valor_bruto_edit = st.session_state.edit_valor_bruto
-                st.session_state.form_desc_adic_edit = st.session_state.edit_desc_adic
                 
                 col_btn1, col_btn2 = st.columns([1, 1])
                 
@@ -871,31 +795,31 @@ with tab_dashboard:
                 if submit_button:
                     # Recalculamos con los valores del estado de sesión finales
                     recalculo_final = calcular_ingreso(
-                        st.session_state.form_lugar.upper(), # Usar la clave en MAYÚSCULAS para el cálculo final
-                        st.session_state.form_item, 
-                        st.session_state.form_metodo, 
-                        st.session_state.form_desc_adic_edit, 
+                        st.session_state.edit_lugar.upper(), 
+                        st.session_state.edit_item, 
+                        st.session_state.edit_metodo, 
+                        st.session_state.edit_desc_adic, 
                         fecha_atencion=st.session_state.edit_fecha, 
-                        valor_bruto_override=st.session_state.form_valor_bruto_edit 
+                        valor_bruto_override=st.session_state.edit_valor_bruto 
                     )
 
                     st.session_state.atenciones_df.loc[index_to_edit] = {
                         "Fecha": st.session_state.edit_fecha.strftime('%Y-%m-%d'), 
-                        "Lugar": st.session_state.form_lugar, 
-                        "Ítem": st.session_state.form_item, 
-                        "Paciente": st.session_state.form_paciente, 
-                        "Método Pago": st.session_state.form_metodo,
+                        "Lugar": st.session_state.edit_lugar, 
+                        "Ítem": st.session_state.edit_item, 
+                        "Paciente": st.session_state.edit_paciente, 
+                        "Método Pago": st.session_state.edit_metodo,
                         "Valor Bruto": recalculo_final['valor_bruto'], 
                         "Desc. Fijo Lugar": recalculo_final['desc_fijo_lugar'], 
                         "Desc. Tarjeta": recalculo_final['desc_tarjeta'], 
-                        "Desc. Adicional": st.session_state.form_desc_adic_edit,
+                        "Desc. Adicional": st.session_state.edit_desc_adic,
                         "Total Recibido": recalculo_final['total_recibido'] 
                     }
                     
                     save_data(st.session_state.atenciones_df)
                     st.session_state.edit_index = None 
                     st.session_state.edited_lugar_state = None 
-                    st.success(f"🎉 Aventura para {st.session_state.form_paciente} actualizada exitosamente. Recargando el mapa...")
+                    st.success(f"🎉 Aventura para {st.session_state.edit_paciente} actualizada exitosamente. Recargando el mapa...")
                     time.sleep(0.5) 
                     st.rerun()
                     
