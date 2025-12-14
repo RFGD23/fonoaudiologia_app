@@ -5,6 +5,7 @@ import os
 import io
 import plotly.express as px 
 import json 
+import time # Importar time para la lógica del fallback de fecha
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -18,19 +19,19 @@ def load_config(filename):
         with open(filename, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}.")
+        # st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}.")
         return {} 
     except json.JSONDecodeError:
-        st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
+        # st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
         return {}
 
-# --- Cargar Variables Globales desde JSON (Asumiendo que existen 'precios_base.json', 'descuentos_lugar.json', etc.) ---
+# --- Cargar Variables Globales desde JSON ---
 try:
     PRECIOS_BASE_CONFIG = load_config('precios_base.json')
     DESCUENTOS_LUGAR = load_config('descuentos_lugar.json')
     COMISIONES_PAGO = load_config('comisiones_pago.json')
 except:
-    # Fallback si no existen los archivos JSON (solo para que el código compile si faltan las bases de datos externas)
+    # Fallback si no existen los archivos JSON
     PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ItemA': 25000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
@@ -50,7 +51,8 @@ def load_data():
     """Carga los datos del archivo CSV de forma segura."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
+        # Convertir a datetime de forma segura, estableciendo un formato si es necesario
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d') 
         return df
     else:
         return pd.DataFrame(columns=[
@@ -66,7 +68,7 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
-    # Manejar caso de ítem/lugar nulo por si falla la selección inicial
+    # Manejar caso de ítem/lugar nulo o vacío
     if not lugar or not item:
          return {
             'valor_bruto': 0,
@@ -83,8 +85,14 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     # LÓGICA CONDICIONAL: AMAR AUSTRAL (Martes/Viernes)
     if lugar == 'AMAR AUSTRAL':
-        dia_semana = fecha_atencion.weekday() 
-        
+        # Asegurar que fecha_atencion sea un objeto date
+        if isinstance(fecha_atencion, pd.Timestamp):
+            dia_semana = fecha_atencion.weekday()
+        elif isinstance(fecha_atencion, date):
+            dia_semana = fecha_atencion.weekday()
+        else:
+            dia_semana = date.today().weekday() # Fallback seguro
+            
         if dia_semana == 1:  # Martes
             desc_fijo_lugar = 8000
         elif dia_semana == 4:  # Viernes
@@ -109,7 +117,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
-# Función de Callback para actualizar el estado del lugar
+# Función de Callback para actualizar el estado del lugar (Usada en la Sección 5)
 def update_edited_lugar():
     """
     Actualiza el lugar seleccionado inmediatamente (fuera del form)
@@ -117,20 +125,20 @@ def update_edited_lugar():
     """
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
-
 # ===============================================
-# 3. INTERFAZ DE USUARIO (FRONTEND)
+# 3. INTERFAZ DE USUARIO (FRONTEND) - ESTILO LÚDICO
 # ===============================================
 
-st.set_page_config(page_title="Control de Ingresos Fonoaudiología", layout="wide")
-st.title("💸 Sistema Interactivo de Ingreso de Atenciones")
-st.markdown("---")
+# 🚀 Configuración de la Página y Título
+st.set_page_config(page_title="🏰 Control de Ingresos Mágicos 🪄", layout="wide")
+st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
+st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
-# --- Herramientas de Mantenimiento (Limpiar Caché) ---
-if st.sidebar.button("🧹 Limpiar Caché y Recargar Datos", type="secondary"):
+# --- Herramientas de Mantenimiento ---
+if st.sidebar.button("🧹 Limpiar Cenicienta (Caché)", type="secondary"):
     st.cache_data.clear() 
     st.cache_resource.clear() 
-    st.success("Caché limpiada. Recargando aplicación...")
+    st.success("Caché limpiada. ¡La magia continúa!")
     st.rerun() 
 
 st.sidebar.markdown("---") 
@@ -148,24 +156,24 @@ if 'edited_lugar_state' not in st.session_state:
     st.session_state.edited_lugar_state = None 
 
 # --- FORMULARIO DE INGRESO ---
-with st.expander("➕ Ingresar Nueva Atención", expanded=True):
+with st.expander("➕ 🎉 Nueva Aventura de Ingreso (Atención)", expanded=True):
     col1, col2 = st.columns([1, 1])
 
     with col1:
         fecha = st.date_input("🗓️ Fecha de Atención", date.today())
-        lugar_seleccionado = st.selectbox("📍 Lugar de Atención", options=LUGARES, key="new_lugar")
+        lugar_seleccionado = st.selectbox("📍 Castillo/Lugar de Atención", options=LUGARES, key="new_lugar")
         
         items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).keys())
-        item_seleccionado = st.selectbox("📋 Ítem/Procedimiento", options=items_filtrados, key="new_item")
+        item_seleccionado = st.selectbox("📋 Poción/Procedimiento", options=items_filtrados, key="new_item")
         
-        paciente = st.text_input("👤 Nombre del Paciente/Asociado", "")
-        metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, key="new_metodo_pago")
+        paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "")
+        metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="new_metodo_pago")
 
     with col2:
         precio_base = PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).get(item_seleccionado, 0)
         
         valor_bruto_input = st.number_input(
-            "💰 **Valor Bruto (Sistema)**", 
+            "💰 **Valor Bruto (Recompensa)**", 
             min_value=0, 
             value=int(precio_base), 
             step=1000,
@@ -173,12 +181,12 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         )
 
         desc_adicional_manual = st.number_input(
-            "✂️ **Descuento Adicional/Ajuste**", 
+            "✂️ **Polvo Mágico Extra (Ajuste)**", 
             min_value=-500000, 
             value=0, 
             step=1000, 
             key="new_desc_adic",
-            help="Ingresa un valor positivo para descuentos o negativo para cargos."
+            help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
         )
         
         # Ejecutar el cálculo central en tiempo real
@@ -192,9 +200,9 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         )
         
         # Mostrar el resultado final y los detalles del descuento
-        st.warning(f"**Desc. Tarjeta ({COMISIONES_PAGO.get(metodo_pago, 0.00)*100:.0f}%):** ${resultados['desc_tarjeta']:,.0f}".replace(",", "."))
+        st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(metodo_pago, 0.00)*100:.0f}%):** ${resultados['desc_tarjeta']:,.0f}".replace(",", "."))
         
-        desc_lugar_label = f"Desc. Fijo Lugar ({lugar_seleccionado})"
+        desc_lugar_label = f"Tributo al Castillo ({lugar_seleccionado})"
         if lugar_seleccionado == 'AMAR AUSTRAL':
             dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
             desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
@@ -202,13 +210,13 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         st.info(f"**{desc_lugar_label}:** ${resultados['desc_fijo_lugar']:,.0f}".replace(",", "."))
         
         st.markdown("###")
-        st.metric(
-            label="## TOTAL LÍQUIDO A INGRESAR", 
-            value=f"${resultados['total_recibido']:,.0f}".replace(",", ".")
+        # Cambio de color a verde (success) para resaltar el ingreso
+        st.success(
+            f"## 💎 Tesoro Total (Líquido): ${resultados['total_recibido']:,.0f}".replace(",", ".")
         )
         
         # Botón para registrar la atención
-        if st.button("✅ Registrar Atención y Guardar", use_container_width=True, type="primary"):
+        if st.button("✅ ¡Guardar Aventura y Tesoro!", use_container_width=True, type="primary"):
             if paciente == "":
                 st.error("Por favor, ingresa el nombre del paciente.")
             else:
@@ -227,66 +235,54 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                 
                 st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                 save_data(st.session_state.atenciones_df)
-                st.success(f"🎉 Atención registrada para {paciente} por ${resultados['total_recibido']:,.0f}.".replace(",", "."))
+                st.success(f"🎉 ¡Aventura registrada para {paciente}! El tesoro es ${resultados['total_recibido']:,.0f}".replace(",", "."))
                 st.balloons()
 
 
 # ===============================================
-# 4. DASHBOARD DE RESUMEN (CON TODOS LOS FILTROS Y GESTIÓN)
+# 4. DASHBOARD DE RESUMEN (ESTILO LÚDICO Y EXPORTACIÓN SIMPLE)
 # ===============================================
 st.markdown("---")
-st.header("📊 Resumen y Análisis de Ingresos")
+st.header("✨ Mapa y Brújula de Ingresos (Dashboard)")
 
 df = st.session_state.atenciones_df
 
-# Bloque principal que solo se ejecuta si hay datos en el DataFrame cargado
 if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
 
     # --- FILTROS DINÁMICOS EN LA BARRA LATERAL (Lugar e Ítem) ---
-    st.sidebar.header("🔍 Filtros de Análisis")
+    st.sidebar.header("🔍 Lupa Mágica (Filtros)")
     
-    # 1. Filtro por Lugar
-    lugares_disponibles = ['Todos'] + sorted(df['Lugar'].unique().tolist())
+    lugares_disponibles = ['Todos los Reinos'] + sorted(df['Lugar'].unique().tolist())
     filtro_lugar = st.sidebar.selectbox(
-        "📍 Seleccionar Centro de Atención", 
+        "📍 Seleccionar Castillo/Reino", 
         options=lugares_disponibles
     )
     
-    # 2. Filtro por Ítem (Dependiente de Lugar)
-    if filtro_lugar != 'Todos':
+    if filtro_lugar != 'Todos los Reinos':
         df_lugar = df[df['Lugar'] == filtro_lugar]
-        items_disponibles = ['Todos'] + sorted(df_lugar['Ítem'].unique().tolist())
+        items_disponibles = ['Todas las Pociones'] + sorted(df_lugar['Ítem'].unique().tolist())
     else:
-        items_disponibles = ['Todos'] + sorted(df['Ítem'].unique().tolist())
+        items_disponibles = ['Todas las Pociones'] + sorted(df['Ítem'].unique().tolist())
         
     filtro_item = st.sidebar.selectbox(
-        "📋 Seleccionar Ítem/Procedimiento", 
+        "📋 Seleccionar Ítem/Poción", 
         options=items_disponibles
     )
     st.sidebar.markdown("---") 
     
-    # ----------------------------------------------------
-    # APLICACIÓN DE FILTROS 1 Y 2 (Lugar e Ítem)
-    # ----------------------------------------------------
-    
-    if filtro_lugar != 'Todos':
+    # APLICACIÓN DE FILTROS 
+    if filtro_lugar != 'Todos los Reinos':
         df = df[df['Lugar'] == filtro_lugar]
         
-    if filtro_item != 'Todos':
+    if filtro_item != 'Todas las Pociones':
         df = df[df['Ítem'] == filtro_item]
     
-    # ----------------------------------------------------
-    # FILTRO POR RANGO DE FECHA (SOLUCIÓN DEFINITIVA DE ERRORES)
-    # ----------------------------------------------------
-    
-    # Si después de los filtros Lugar/Ítem el DF está vacío, detenemos la ejecución
     if df.empty:
-        st.warning("No hay datos disponibles para la combinación de Lugar/Ítem seleccionada.")
+        st.warning("No hay datos disponibles para la combinación mágica seleccionada.")
         st.stop()
         
-    # --- LÓGICA DE VALIDACIÓN DE FECHAS SEGURA ---
-    
+    # LÓGICA DE VALIDACIÓN DE FECHAS SEGURA 
     df_valid_dates = df.dropna(subset=['Fecha'])
 
     if df_valid_dates.empty:
@@ -299,9 +295,8 @@ if not df.empty:
         if min_date.year < 2000:
             min_date = date.today()
             max_date = date.today()
-    # -------------------------------------------------------------------------
 
-    st.subheader("Filtro de Periodo")
+    st.subheader("Tiempo de la Aventura")
     col_start, col_end = st.columns(2)
     
     fecha_default_inicio = min_date
@@ -309,107 +304,108 @@ if not df.empty:
         fecha_default_inicio = max_date 
         
     fecha_inicio = col_start.date_input(
-        "📅 Fecha de Inicio", 
+        "📅 Desde el Inicio del Cuento", 
         fecha_default_inicio, 
         min_value=min_date, 
         max_value=max_date
     )
     fecha_fin = col_end.date_input(
-        "📅 Fecha de Fin", 
+        "📅 Hasta el Final del Cuento", 
         max_date, 
         min_value=min_date, 
         max_value=max_date
     )
     
-    # --- CORRECCIÓN FINAL PARA EL TypeError: Limpiar NaN/NaT antes de comparar ---
     df = df.dropna(subset=['Fecha']) 
     
-    # Aplicar el filtro final al DataFrame
     df_filtrado = df[
         (df['Fecha'].dt.date >= fecha_inicio) & 
         (df['Fecha'].dt.date <= fecha_fin)
     ]
     
     if df_filtrado.empty:
-        st.warning("No hay datos registrados en el rango de fechas seleccionado.")
+        st.warning("No hay tesoros registrados en este periodo de tiempo.")
         st.stop()
         
-    # Usamos el DataFrame filtrado para todos los cálculos
     df = df_filtrado
     
     # ----------------------------------------------------
-    # MÉTRICAS PRINCIPALES (KPIs)
+    # MÉTRICAS PRINCIPALES (KPIs) - ESTILO MÁS VISUAL
     # ----------------------------------------------------
     
     def format_currency(value):
+        # Función de formato de moneda ya definida
         return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
+    st.markdown("### 🔑 Metas Clave")
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     
     total_liquido_historico = df["Total Recibido"].sum()
-    col_kpi1.metric("Total Líquido", format_currency(total_liquido_historico))
+    col_kpi1.metric("💎 Tesoro Neto (Líquido)", format_currency(total_liquido_historico))
     
     total_bruto_historico = df["Valor Bruto"].sum()
-    col_kpi2.metric("Total Bruto", format_currency(total_bruto_historico))
+    col_kpi2.metric("✨ Recompensa Bruta", format_currency(total_bruto_historico))
     
     total_atenciones_historico = len(df)
-    col_kpi3.metric("Total de Atenciones", f"{total_atenciones_historico:,}".replace(",", "."))
+    col_kpi3.metric("👸 Total Héroes Atendidos", f"{total_atenciones_historico:,}".replace(",", "."))
     
     st.markdown("---")
-    st.subheader("Detalle de Descuentos y Comisiones")
+    st.subheader("💔 Los Maleficios y Tributos (Descuentos)")
     
     col_det1, col_det2 = st.columns(2)
     
     total_desc_tarjeta = df["Desc. Tarjeta"].sum()
     col_det1.metric(
-        "💳 Total Comisiones de Tarjeta", 
+        "💳 Comisiones del Hada Madrina (Tarjeta)", 
         format_currency(total_desc_tarjeta)
     )
     
     total_desc_fijo_lugar = df["Desc. Fijo Lugar"].sum()
     col_det2.metric(
-        "📍 Total Desc. Fijo Lugar (Base)", 
+        "📍 Tributo Fijo al Castillo", 
         format_currency(total_desc_fijo_lugar)
     )
 
     st.markdown("---")
     
     # Análisis Mensual
-    st.subheader("📈 Evolución Mensual de Ingresos Líquidos")
+    st.subheader("🚀 El Viaje en el Tiempo (Evolución Mensual)")
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
-    st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#4c78a8")
-
+    # Usar un color más lúdico
+    st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#ff7f0e") 
+    
     # Análisis por Lugar (Plotly)
-    st.subheader("🥧 Distribución de Ingresos por Centro de Atención")
+    st.subheader("🗺️ Mapa de Castillos (Distribución de Ingresos)")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
     
+    # Usar una secuencia de colores más brillante
     fig_lugar = px.pie(
         resumen_lugar,
         values='Total Recibido',
         names='Lugar',
-        title='Proporción de Ingresos Líquidos por Centro',
-        color_discrete_sequence=px.colors.sequential.RdBu
+        title='Proporción de Tesoros Líquidos por Castillo',
+        color_discrete_sequence=px.colors.qualitative.Pastel
     )
     fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
     st.plotly_chart(fig_lugar, use_container_width=True)
 
     # ----------------------------------------------------
-    # GESTIÓN: VISTA PREVIA, EDICIÓN Y ELIMINACIÓN DE DATOS
+    # GESTIÓN Y EXPORTACIÓN SIMPLE (VISTA DE TABLA)
     # ----------------------------------------------------
-    st.header("📋 Gestión de Atenciones Registradas")
+    st.header("📜 Libro de Registros (Gestión de Atenciones)")
 
     df_display = df.copy() 
     
     st.subheader("Atenciones Registradas (✏️ Editar, 🗑️ Eliminar)")
 
-    # Títulos de columna
+    # Títulos de columna con emojis
     cols_title = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
     cols_title[0].write("**Fecha**")
     cols_title[1].write("**Lugar**")
     cols_title[2].write("**Líquido**")
-    cols_title[3].write("**Paciente**")
+    cols_title[3].write("**Héroe**")
     cols_title[4].write("**Editar**") 
     cols_title[5].write("**Eliminar**") 
     
@@ -428,68 +424,67 @@ if not df.empty:
         cols[3].write(row['Paciente'])
         
         # --- BOTÓN DE EDICIÓN ---
-        if cols[4].button("✏️", key=f"edit_{index}", help="Editar esta atención"):
+        if cols[4].button("✏️", key=f"edit_{index}", help="Editar esta aventura"):
             st.session_state.edit_index = index
-            st.session_state.edited_lugar_state = row['Lugar'] # Inicializar el estado de edición del lugar
+            st.session_state.edited_lugar_state = row['Lugar'] 
             st.rerun()
 
         # --- BOTÓN DE ELIMINACIÓN ---
-        if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta atención de forma permanente"):
+        if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta aventura (¡Cuidado con la magia negra!)"):
             st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index)
             save_data(st.session_state.atenciones_df)
-            st.success(f"Atención del paciente {row['Paciente']} eliminada. Recargando...")
+            st.success(f"Aventura de {row['Paciente']} eliminada. Recargando el Libro...")
             st.rerun()
 
     st.markdown("---") 
     
-    # Botón de Descarga
+    # 🌟 EXPORTACIÓN FÁCIL DE USAR 
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="⬇️ Descargar Datos Filtrados (CSV)",
+        label="⬇️ ¡Descargar el Mapa del Tesoro (CSV)! 🗺️",
         data=csv,
-        file_name='reporte_control_ingresos_filtrado.csv',
+        file_name='reporte_tesoros_filtrado.csv',
         mime='text/csv',
+        use_container_width=True, 
+        type="primary"
     )
 else:
-    st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
+    st.info("Aún no hay aventuras. ¡Registra el primer tesoro para ver el mapa!")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN FINAL DE VALOR BRUTO)
+# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN FINAL DE VALOR BRUTO Y CÁLCULO)
 # ===============================================
-
-# Función de Callback para actualizar el estado del lugar
-def update_edited_lugar():
-    """
-    Actualiza el lugar seleccionado inmediatamente (fuera del form)
-    para que la lista de Ítems se recalcule al instante.
-    """
-    st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 if st.session_state.edit_index is not None:
     
     index_to_edit = st.session_state.edit_index
     try:
         data_to_edit = st.session_state.atenciones_df.loc[index_to_edit]
+        # Asegurar que la fecha sea un objeto date para el input
+        if isinstance(data_to_edit['Fecha'], pd.Timestamp):
+             initial_date = data_to_edit['Fecha'].date()
+        else:
+             initial_date = date.today() # Fallback
     except KeyError:
         st.error("Error: El índice de la fila a editar no fue encontrado.")
         st.session_state.edit_index = None
         st.session_state.edited_lugar_state = None
         st.rerun()
 
-    # Si el estado intermedio no está seteado (primera carga del modal), inicializarlo
+    # Inicializar el estado del lugar al abrir el modal (si no está ya seteado)
     if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
         st.session_state.edited_lugar_state = data_to_edit['Lugar']
 
-    with st.expander(f"📝 Editar Atención para {data_to_edit['Paciente']}", expanded=True):
+    with st.expander(f"📝 Editar Aventura para {data_to_edit['Paciente']}", expanded=True):
         
-        st.subheader("Modificar Datos de la Atención")
+        st.subheader("Modificar Datos de la Aventura")
         
-        # 1. Widgets FUERA DEL FORMULARIO (Dependencia y Campos necesarios para el cálculo en tiempo real)
+        # 1. Widgets FUERA DEL FORMULARIO (para manejo de dependencia y cálculo en tiempo real)
         col_edit1_out, col_edit2_out = st.columns(2)
         
         with col_edit1_out:
             edited_fecha = st.date_input("🗓️ Fecha de Atención", 
-                                          value=data_to_edit['Fecha'].date(), 
+                                          value=initial_date, 
                                           key="edit_fecha")
             
             # WIDGET LUGAR (FUERA DEL FORMULARIO, CON CALLBACK)
@@ -499,7 +494,7 @@ if st.session_state.edit_index is not None:
                 lugar_idx = 0
             
             edited_lugar_display = st.selectbox(
-                "📍 Lugar de Atención", 
+                "📍 Castillo/Lugar de Atención", 
                 options=LUGARES, 
                 index=lugar_idx, 
                 key="edit_lugar", 
@@ -517,41 +512,44 @@ if st.session_state.edit_index is not None:
             item_key = f"edit_item_for_{st.session_state.edited_lugar_state}" 
             
             edited_item_display = st.selectbox(
-                "📋 Ítem/Procedimiento", 
+                "📋 Poción/Procedimiento", 
                 options=items_edit, 
                 index=current_item_index, 
                 key=item_key 
             )
             
-            edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'], key="edit_paciente")
+            edited_paciente = st.text_input("👤 Héroe/Heroína (Paciente)", value=data_to_edit['Paciente'], key="edit_paciente")
             
             try:
                 pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
             except ValueError:
                 pago_idx = 0
-            edited_metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
+            edited_metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
         
         with col_edit2_out: 
             
-            # --- LÓGICA DE PRECIO BASE SUGERIDO CORREGIDA ---
-            
-            # Obtener el Ítem y Lugar actualmente seleccionados del st.session_state
+            # --- LÓGICA DE PRECIO BASE SUGERIDO CORREGIDA (PARA ACTUALIZAR VALOR BRUTO) ---
             current_lugar = st.session_state.edit_lugar
             current_item = st.session_state[item_key]
             
             precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar, {}).get(current_item, 0)
-
-            # Si el usuario NO ha tocado el campo, o si el Ítem/Lugar ha cambiado, usamos el precio sugerido.
-            if 'edit_valor_bruto' not in st.session_state or st.session_state.edited_lugar_state != data_to_edit['Lugar'] or st.session_state[item_key] != data_to_edit['Ítem']:
+            
+            # Lógica para determinar el valor inicial del input numérico:
+            # Si se está cargando el modal por primera vez O si el Ítem o Lugar han cambiado, usamos el precio sugerido.
+            if ('edit_valor_bruto' not in st.session_state or 
+                st.session_state.edit_lugar != data_to_edit['Lugar'] or 
+                st.session_state[item_key] != data_to_edit['Ítem']):
+                
                 initial_valor_bruto = int(precio_base_sugerido)
                 st.session_state.edit_valor_bruto = initial_valor_bruto
+                
             else:
-                # Si el usuario ya interactuó con el campo, o si la página se está re-renderizando sin cambio de Ítem/Lugar, usamos el valor guardado.
+                # Si los inputs de Lugar/Ítem NO han cambiado, mantenemos el valor que el usuario pudo haber tipeado manualmente.
                 initial_valor_bruto = st.session_state.edit_valor_bruto
                 
-            # Renderizar el widget usando el valor inicial calculado.
+            # Renderizar el widget usando el valor inicial calculado/mantenido.
             edited_valor_bruto = st.number_input(
-                "💰 **Valor Bruto (Manual)**", 
+                "💰 **Valor Bruto (Recompensa Manual)**", 
                 min_value=0, 
                 value=initial_valor_bruto, 
                 step=1000,
@@ -560,7 +558,7 @@ if st.session_state.edit_index is not None:
             # --- FIN DE LÓGICA DE PRECIO BASE ---
             
             edited_desc_adicional_manual = st.number_input(
-                "✂️ **Descuento Adicional/Ajuste**", 
+                "✂️ **Polvo Mágico Extra (Ajuste)**", 
                 min_value=-500000, 
                 value=int(data_to_edit['Desc. Adicional']), 
                 step=1000,
@@ -582,20 +580,20 @@ if st.session_state.edit_index is not None:
 
             # Mostrar Descuentos 
             st.warning(
-                f"**Desc. Tarjeta ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** ${recalculo['desc_tarjeta']:,.0f}".replace(",", ".")
+                f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** ${recalculo['desc_tarjeta']:,.0f}".replace(",", ".")
             )
             
-            desc_lugar_label = f"Desc. Fijo Lugar ({st.session_state.edit_lugar})"
+            desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
             if st.session_state.edit_lugar == 'AMAR AUSTRAL':
                 dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
+                # Usar la fecha seleccionada en el widget, no la fecha original de la fila
                 desc_lugar_label += f" ({dias_semana.get(st.session_state.edit_fecha.weekday())})" 
 
             st.info(f"**{desc_lugar_label}:** ${recalculo['desc_fijo_lugar']:,.0f}".replace(",", "."))
             
             st.markdown("###")
-            st.metric(
-                label="## NUEVO TOTAL LÍQUIDO", 
-                value=f"${recalculo['total_recibido']:,.0f}".replace(",", ".")
+            st.success(
+                f"## 💎 NUEVO TOTAL LÍQUIDO: ${recalculo['total_recibido']:,.0f}".replace(",", ".")
             )
             # ------------------------------------------------------------------
         
@@ -622,7 +620,9 @@ if st.session_state.edit_index is not None:
                 save_data(st.session_state.atenciones_df)
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
-                st.success(f"🎉 Atención para {st.session_state.edit_paciente} actualizada exitosamente. Recargando...")
+                st.success(f"🎉 Aventura para {st.session_state.edit_paciente} actualizada exitosamente. Recargando el mapa...")
+                # Dar un pequeño tiempo para que el mensaje sea visible antes del rerun
+                time.sleep(0.5) 
                 st.rerun()
                 
             # Botón de Cancelar
