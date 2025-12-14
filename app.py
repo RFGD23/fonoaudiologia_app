@@ -38,6 +38,7 @@ def load_config(filename):
         st.info(f"Archivo de configuración '{filename}' no encontrado. Creando uno por defecto.")
         
         # --- Configuración por defecto para inicialización ---
+        # NOTA: Las claves por defecto están en MAYÚSCULAS para consistencia.
         if filename == PRECIOS_FILE:
             default_data = {
                 'ALERCE': {'Item1': 30000, 'Item2': 40000}, 
@@ -62,14 +63,35 @@ def load_config(filename):
 # --- Cargar Variables Globales desde JSON ---
 
 def re_load_global_config():
-    """Recarga todas las variables de configuración global y las listas derivadas."""
+    """Recarga todas las variables de configuración global y las listas derivadas, FORZANDO MAYÚSCULAS en las claves de Lugar y Método de Pago."""
     global PRECIOS_BASE_CONFIG, DESCUENTOS_LUGAR, COMISIONES_PAGO, DESCUENTOS_REGLAS
     global LUGARES, METODOS_PAGO
     
-    PRECIOS_BASE_CONFIG = load_config(PRECIOS_FILE)
-    DESCUENTOS_LUGAR = load_config(DESCUENTOS_FILE)
-    COMISIONES_PAGO = load_config(COMISIONES_FILE)
-    DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
+    # --- Cargar Configuración Bruta ---
+    precios_raw = load_config(PRECIOS_FILE)
+    descuentos_raw = load_config(DESCUENTOS_FILE)
+    comisiones_raw = load_config(COMISIONES_FILE)
+    reglas_raw = load_config(REGLAS_FILE)
+
+    # --- Procesar y Forzar MAYÚSCULAS para asegurar consistencia ---
+    
+    # 1. Precios Base (Clave principal: Lugar)
+    PRECIOS_BASE_CONFIG = {k.upper(): v for k, v in precios_raw.items()}
+
+    # 2. Descuentos Fijos (Clave principal: Lugar)
+    DESCUENTOS_LUGAR = {k.upper(): v for k, v in descuentos_raw.items()}
+
+    # 3. Comisiones de Pago (Clave principal: Método de Pago)
+    COMISIONES_PAGO = {k.upper(): v for k, v in comisiones_raw.items()}
+
+    # 4. Reglas (Clave principal: Lugar, Claves anidadas: Día)
+    DESCUENTOS_REGLAS = {}
+    for lugar, reglas in reglas_raw.items():
+        # Aseguramos el lugar en mayúsculas
+        lugar_upper = lugar.upper()
+        # Aseguramos el día de la semana en mayúsculas
+        reglas_upper = {dia.upper(): monto for dia, monto in reglas.items()}
+        DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
     # Recrear las listas dinámicas
     LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys())) if PRECIOS_BASE_CONFIG else []
@@ -106,6 +128,10 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
+    # Asegurar que el lugar y el método de pago están en MAYÚSCULAS para coincidir con la configuración
+    lugar_upper = lugar.upper()
+    metodo_pago_upper = metodo_pago.upper()
+    
     if not lugar or not item or not PRECIOS_BASE_CONFIG:
           return {
               'valor_bruto': 0,
@@ -114,19 +140,18 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
               'total_recibido': 0
           }
     
-    precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
+    precio_base = PRECIOS_BASE_CONFIG.get(lugar_upper, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
     # --- LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo) ---
     
-    # 1. Obtener el descuento fijo base (Tributo)
-    lugar_upper = lugar.upper()
+    # 1. Obtener el descuento fijo base (Tributo) usando la clave en MAYÚSCULAS
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
     
     # 2. Revisar si existe una regla especial para el día
     if lugar_upper in DESCUENTOS_REGLAS:
         
-        # Asegurar que fecha_atencion sea un objeto date o Timestamp para obtener el día
+        # Obtener el número del día de la semana
         if isinstance(fecha_atencion, pd.Timestamp):
             dia_semana_num = fecha_atencion.weekday()
         elif isinstance(fecha_atencion, date):
@@ -136,14 +161,15 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             
         dia_nombre = DIAS_SEMANA[dia_semana_num].upper() # Obtener el nombre del día en mayúsculas
         
+        # Buscar la regla específica para el día en MAYÚSCULAS
         regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
         
         # 3. Si la regla especial existe, sobrescribe el descuento base
         if regla_especial is not None:
             desc_fijo_lugar = regla_especial 
 
-    # Aplicar Comisión de Tarjeta
-    comision_pct = COMISIONES_PAGO.get(metodo_pago.upper(), 0.00) 
+    # Aplicar Comisión de Tarjeta usando la clave en MAYÚSCULAS
+    comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
     desc_tarjeta = valor_bruto * comision_pct
     
     # Cálculo final
@@ -164,9 +190,8 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
-    Fuerza la actualización de 'form_valor_bruto' en el Session State,
-    manejando el cambio de Ítem al cambiar de Lugar.
     """
+    # Usamos upper() para la búsqueda en la configuración
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
     
     # Obtener la lista de ítems del nuevo lugar
@@ -175,20 +200,16 @@ def update_price_from_item_or_lugar():
     # --- Lógica 1: Ajustar el Ítem si el Lugar cambia ---
     current_item = st.session_state.get('form_item')
     
-    # Si el ítem actual no está en la nueva lista de ítems del lugar
     if current_item not in items_disponibles:
-        # Forzar el primer ítem de la nueva lista como valor seleccionado
         if items_disponibles:
             st.session_state.form_item = items_disponibles[0]
             item_calc_for_price = items_disponibles[0]
         else:
-            # Si no hay ítems disponibles, resetear
             st.session_state.form_item = ''
             st.session_state.form_valor_bruto = 0
             st.session_state.form_desc_adic = 0
             return
     else:
-        # Si el ítem es válido, lo usamos.
         item_calc_for_price = current_item
         
     # --- Lógica 2: Calcular el nuevo precio base ---
@@ -201,14 +222,11 @@ def update_price_from_item_or_lugar():
     
     # 3. Establecer el nuevo valor en el Session State
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
-    
-    # OPCIONAL: Resetear el descuento adicional al cambiar la base
     st.session_state.form_desc_adic = 0
 
 def update_edit_price():
     """
     Callback llamado cuando 'edit_lugar' o 'edit_item' cambia en el modal de edición.
-    Fuerza la actualización de 'edit_valor_bruto'.
     """
     lugar_key_edit = st.session_state.get('edit_lugar', '').upper()
     item_key_edit = st.session_state.get('edit_item', '')
@@ -219,7 +237,6 @@ def update_edit_price():
         
     precio_base_sugerido_edit = PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).get(item_key_edit, 0)
     
-    # Forzar el valor sugerido en el number_input de edición
     st.session_state.edit_valor_bruto = int(precio_base_sugerido_edit)
     
 
@@ -266,7 +283,8 @@ st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 if st.sidebar.button("🧹 Limpiar Cenicienta (Caché)", type="secondary"):
     st.cache_data.clear() 
     st.cache_resource.clear() 
-    st.success("Caché limpiada. ¡La magia continúa!")
+    re_load_global_config() # Recargar la configuración después de limpiar el caché
+    st.success("Caché y configuración limpiadas. ¡La magia continúa!")
     st.rerun() 
 
 st.sidebar.markdown("---") 
@@ -293,6 +311,8 @@ with tab_registro:
         st.stop()
     
     # 1. Definir valores iniciales para los Selectboxes y Number Inputs
+    
+    # NOTA: Los selectbox options están en MAYÚSCULAS, por lo que el st.session_state.form_lugar será la clave en MAYÚSCULAS.
     lugar_key_initial = LUGARES[0] if LUGARES else ''
     
     if 'form_lugar' not in st.session_state:
@@ -351,7 +371,7 @@ with tab_registro:
                      index=item_index, 
                      on_change=update_price_from_item_or_lugar) 
     
-    # 3. VALOR BRUTO (CORREGIDO: Solo usa key para evitar la advertencia)
+    # 3. VALOR BRUTO 
     with col_reactivo_3:
         st.number_input(
             "💰 **Valor Bruto (Recompensa)**", 
@@ -396,9 +416,9 @@ with tab_registro:
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
-                # Ejecutar el cálculo central en tiempo real
+                # Ejecutar el cálculo central en tiempo real. Se pasa el lugar tal como está en el state (MAYÚSCULAS)
                 resultados = calcular_ingreso(
-                    st.session_state.form_lugar.upper(),       
+                    st.session_state.form_lugar, # Ya está en MAYÚSCULAS por el SelectBox
                     st.session_state.form_item,              
                     st.session_state.form_metodo_pago,
                     st.session_state.form_desc_adic,  
@@ -409,9 +429,9 @@ with tab_registro:
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
                 # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO ---
-                current_lugar_upper = st.session_state.form_lugar.upper()
+                current_lugar_upper = st.session_state.form_lugar # Ya está en MAYÚSCULAS
                 current_day_name = DIAS_SEMANA[st.session_state.form_fecha_form.weekday()]
-                desc_lugar_label = f"Tributo al Castillo ({st.session_state.form_lugar})"
+                desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
                 if current_lugar_upper in DESCUENTOS_REGLAS:
@@ -446,7 +466,7 @@ with tab_registro:
                 else:
                     # 1. Recalculo final (usando los valores finales del state)
                     resultados_finales = calcular_ingreso(
-                        st.session_state.form_lugar.upper(), 
+                        st.session_state.form_lugar, 
                         st.session_state.form_item, 
                         st.session_state.form_metodo_pago, 
                         st.session_state.form_desc_adic, 
@@ -789,6 +809,7 @@ with tab_dashboard:
                 except ValueError:
                     lugar_idx = 0
                 
+                # NOTA: El SelectBox usa LUGARES (en MAYÚSCULAS)
                 edited_lugar_display = st.selectbox(
                     "📍 Castillo/Lugar de Atención", 
                     options=LUGARES, 
@@ -797,7 +818,7 @@ with tab_dashboard:
                     on_change=update_edit_price 
                 )
                 
-                lugar_key_edit = st.session_state.edit_lugar.upper()
+                lugar_key_edit = st.session_state.edit_lugar # Ya está en MAYÚSCULAS
                 items_edit = list(PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).keys())
                 
                 # Ajustar el índice para el ítem de edición
@@ -820,14 +841,14 @@ with tab_dashboard:
                 edited_paciente = st.text_input("👤 Héroe/Heroína (Paciente)", value=data_to_edit['Paciente'], key="edit_paciente")
                 
                 try:
-                    pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
+                    pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'].upper()) # Aseguramos mayúsculas
                 except ValueError:
                     pago_idx = 0
                 edited_metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
             
             with col_edit2_out: 
                 
-                # VALOR BRUTO DE EDICIÓN (CORREGIDO: Solo usa key)
+                # VALOR BRUTO DE EDICIÓN 
                 edited_valor_bruto = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
@@ -844,9 +865,9 @@ with tab_dashboard:
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
-                # Recalculo en tiempo real para la edición
+                # Recalculo en tiempo real para la edición. Se pasa el lugar tal como está en el state (MAYÚSCULAS)
                 resultados_edit = calcular_ingreso(
-                    st.session_state.edit_lugar.upper(), 
+                    st.session_state.edit_lugar, 
                     st.session_state.edit_item, 
                     st.session_state.edit_metodo,
                     st.session_state.edit_desc_adic,  
@@ -857,9 +878,9 @@ with tab_dashboard:
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** {format_currency(resultados_edit['desc_tarjeta'])}")
                 
                 # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO EN EDICIÓN ---
-                current_lugar_upper = st.session_state.edit_lugar.upper()
+                current_lugar_upper = st.session_state.edit_lugar # Ya está en MAYÚSCULAS
                 current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
-                desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
+                desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
                 if current_lugar_upper in DESCUENTOS_REGLAS:
@@ -884,7 +905,7 @@ with tab_dashboard:
                 
                 # Recálculo final antes de guardar
                 resultados_finales_edit = calcular_ingreso(
-                    st.session_state.edit_lugar.upper(), 
+                    st.session_state.edit_lugar, 
                     st.session_state.edit_item, 
                     st.session_state.edit_metodo, 
                     st.session_state.edit_desc_adic, 
@@ -964,7 +985,7 @@ with tab_config:
                 # Revertir el DataFrame a la estructura de diccionario anidado
                 new_precios_config = {}
                 for _, row in edited_df_precios.iterrows():
-                    lugar = str(row['Lugar']).upper() # Asegurar mayúsculas para las claves
+                    lugar = str(row['Lugar']).upper() # Guardar en MAYÚSCULAS
                     item = str(row['Ítem'])
                     valor = int(row['Valor Bruto'])
                     
@@ -1019,7 +1040,7 @@ with tab_config:
             try:
                 new_descuentos_config = {}
                 for _, row in edited_df_descuentos.iterrows():
-                    lugar = str(row['Lugar']).upper()
+                    lugar = str(row['Lugar']).upper() # Guardar en MAYÚSCULAS
                     valor = int(row['Desc. Fijo Base'])
                     if lugar:
                         new_descuentos_config[lugar] = valor
@@ -1072,8 +1093,8 @@ with tab_config:
             try:
                 new_reglas_config = {}
                 for _, row in edited_df_reglas.iterrows():
-                    lugar = str(row['Lugar']).upper()
-                    dia = str(row['Día']).upper()
+                    lugar = str(row['Lugar']).upper() # Guardar Lugar en MAYÚSCULAS
+                    dia = str(row['Día']).upper() # Guardar Día en MAYÚSCULAS
                     monto = int(row['Descuento Regla'])
                     
                     if lugar and dia:
@@ -1128,7 +1149,7 @@ with tab_config:
             try:
                 new_comisiones_config = {}
                 for _, row in edited_df_comisiones.iterrows():
-                    metodo = str(row['Método de Pago']).upper()
+                    metodo = str(row['Método de Pago']).upper() # Guardar en MAYÚSCULAS
                     comision = float(row['Comisión (%)'])
                     if metodo:
                         new_comisiones_config[metodo] = comision
