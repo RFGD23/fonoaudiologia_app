@@ -231,11 +231,27 @@ if not df.empty:
     # 
     st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#4c78a8")
 
-    # Análisis por Lugar (Tipo Torta)
+ # Análisis por Lugar (Tipo Torta)
     st.subheader("Distribución de Ingresos por Centro de Atención")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
-    # 
-    st.dataframe(resumen_lugar, use_container_width=True) # Mostrar tabla de datos
+    
+    # *** NUEVO CÓDIGO PLOTLY EXPRESS ***
+    fig_lugar = px.pie(
+        resumen_lugar,
+        values='Total Recibido',
+        names='Lugar',
+        title='Proporción de Ingresos Líquidos por Centro',
+        color_discrete_sequence=px.colors.sequential.RdBu # Opción de colores
+    )
+    
+    # Ajustes de visualización
+    fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
+    
+    # Mostrar el gráfico de forma nativa en Streamlit
+    st.plotly_chart(fig_lugar, use_container_width=True)
+
+    # Opcional: Mostrar la tabla de datos debajo si es necesario
+    st.dataframe(resumen_lugar, use_container_width=True)
 
     # Descarga de datos
     csv = df.to_csv(index=False).encode('utf-8')
