@@ -40,7 +40,9 @@ try:
     DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
 except:
     # Fallback si no existen los archivos JSON o hay error
-    PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ItemA': 25000, 'ItemB': 35000}}
+    # NOTA: Asegúrese de que si usa este fallback, actualice los valores
+    # en la pestaña de Configuración Maestra con los datos correctos
+    PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
     DESCUENTOS_REGLAS = {
@@ -136,8 +138,24 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
+
+def update_valor_bruto_on_item_change():
+    """
+    Callback: FUERZA la actualización del valor bruto sugerido cuando cambia 
+    el ítem o el lugar en el formulario de registro.
+    """
+    # Aseguramos que la clave del lugar esté en mayúsculas para buscar en el JSON
+    lugar_key = st.session_state.new_lugar.upper()
+    item_seleccionado = st.session_state.new_item
+    
+    precio_base = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado, 0)
+    
+    # Asignar el nuevo valor al widget 'new_valor_bruto' en el estado de sesión
+    st.session_state.new_valor_bruto = int(precio_base)
+
+
 def update_edited_lugar():
-    """Actualiza el lugar seleccionado inmediatamente."""
+    """Actualiza el lugar seleccionado en el modal de edición."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
@@ -239,28 +257,43 @@ with tab_registro:
 
         with col1:
             fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="new_fecha")
-            lugar_seleccionado = st.selectbox("📍 Castillo/Lugar de Atención", options=LUGARES, key="new_lugar")
             
-            # --- CORRECCIÓN DE PRECIOS BASE: Asegurar que el lugar esté en MAYÚSCULAS ---
+            # 1. SELECTBOX LUGAR (con Callback)
+            lugar_seleccionado = st.selectbox("📍 Castillo/Lugar de Atención", 
+                                              options=LUGARES, 
+                                              key="new_lugar",
+                                              on_change=update_valor_bruto_on_item_change)
+            
+            # --- CLAVE EN MAYÚSCULAS ---
             lugar_key = lugar_seleccionado.upper() if lugar_seleccionado else ''
             
-            # Obtener ítems filtrados usando la clave asegurada en MAYÚSCULAS
+            # Obtener ítems filtrados 
             items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
-            item_seleccionado = st.selectbox("📋 Poción/Procedimiento", options=items_filtrados, key="new_item")
+            
+            # 2. SELECTBOX ÍTEM (con Callback)
+            item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
+                                             options=items_filtrados, 
+                                             key="new_item",
+                                             on_change=update_valor_bruto_on_item_change)
             
             paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="new_paciente")
             metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="new_metodo_pago")
 
         with col2:
-            # --- CORRECCIÓN DE PRECIOS BASE: Usar la clave en MAYÚSCULAS para el precio base ---
+            # --- LÓGICA DE VALOR BRUTO USANDO EL ESTADO DE SESIÓN ---
             precio_base = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado, 0)
-            
+
+            # Inicializar el estado de sesión si no existe o si las selecciones cambian
+            if 'new_valor_bruto' not in st.session_state or st.session_state.new_item != item_seleccionado or st.session_state.new_lugar != lugar_seleccionado:
+                 st.session_state.new_valor_bruto = int(precio_base)
+
             valor_bruto_input = st.number_input(
                 "💰 **Valor Bruto (Recompensa)**", 
                 min_value=0, 
-                value=int(precio_base), 
+                # Usamos el valor del estado de sesión, que se actualiza con el callback
+                value=int(st.session_state.new_valor_bruto), 
                 step=1000,
-                key="new_valor_bruto"
+                key="new_valor_bruto" 
             )
 
             desc_adicional_manual = st.number_input(
@@ -291,7 +324,7 @@ with tab_registro:
                 dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                 desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
 
-            st.info(f"**{desc_lugar_label}:** ${resultados['desc_fijo_lugar']:,.0f}".replace(",", "."))
+            st.info(f"**Tributo al Castillo ({lugar_seleccionado}):** ${resultados['desc_fijo_lugar']:,.0f}".replace(",", "."))
             
             st.markdown("###")
             # Cambio de color a verde (success) para resaltar el ingreso
@@ -611,8 +644,9 @@ with tab_dashboard:
                 current_item = st.session_state[item_key]
                 precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar_key, {}).get(current_item, 0)
                 
+                # Inicializamos el valor bruto de edición con el precio base si hay inconsistencia o es la primera vez.
                 if ('edit_valor_bruto' not in st.session_state or 
-                    current_lugar_key != data_to_edit['Lugar'].upper() or # Revisar si el lugar ha cambiado
+                    current_lugar_key != data_to_edit['Lugar'].upper() or 
                     st.session_state[item_key] != data_to_edit['Ítem']):
                     
                     initial_valor_bruto = int(precio_base_sugerido)
