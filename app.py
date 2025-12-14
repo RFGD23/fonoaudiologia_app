@@ -120,7 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN ROBUSTA DE VISIBILIDAD) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN DEFINITIVA PARA SCROLL) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -143,27 +143,33 @@ def set_background(png_file):
         return
         
     # *************************************************************************
-    # CSS INYECTADO: SOLUCIÓN ROBUSTA DE FONDO Y TRANSPARENCIA
+    # CSS INYECTADO: SOLUCIÓN FINAL DE FONDO Y TRANSPARENCIA
     # *************************************************************************
     page_bg_img = f'''
     <style>
-    /* 1. Fondo de la Aplicación (Aplicado a la raíz HTML/BODY) */
-    html, body, [data-testid="stAppViewBlock"] {{
+    /* 1. SOLUCIÓN DEFINITIVA PARA QUE EL FONDO SE MUEVA CON EL CONTENIDO */
+    /* Aseguramos transparencia base para el contenedor principal */
+    [data-testid="stAppViewBlock"] {{
+        background-color: transparent; 
+    }}
+    
+    /* Aplicamos el fondo al contenedor principal de Streamlit (.main) y forzamos el scroll */
+    .main {{
         background-image: url("data:image/png;base64,{bin_str}");
         background-size: cover; 
-        background-attachment: scroll; /* Se mueve con el scroll */
+        background-attachment: scroll !important; /* ¡Forzamos el movimiento con el contenido! */
         background-repeat: no-repeat;
         min-height: 100vh;
     }}
     
-    /* 2. Aseguramos que el contenedor principal de Streamlit sea transparente */
+    /* 2. Aseguramos que el contenedor raíz de Streamlit sea transparente */
     .stApp {{
         background-color: transparent !important; 
     }}
 
     /* 3. Contenedores Principales (Expander, Bloques de Inputs, etc.) */
     .css-1r6dm1, .streamlit-expander {{ 
-        background-color: rgba(0, 0, 0, 0.5); /* Fondo oscuro semitransparente (ajuste la opacidad) */
+        background-color: rgba(0, 0, 0, 0.5); /* Fondo oscuro semitransparente */
         border-radius: 10px;
         padding: 10px;
     }} 
@@ -547,6 +553,7 @@ if st.session_state.edit_index is not None:
         
         col_edit1_out, col_edit2_out = st.columns(2)
         
+        # --- WIDGETS FUERA DEL FORMULARIO PARA QUE EL CALLBACK FUNCIONE ---
         with col_edit1_out:
             edited_fecha = st.date_input("🗓️ Fecha de Atención", 
                                           value=initial_date, 
@@ -557,14 +564,13 @@ if st.session_state.edit_index is not None:
             except ValueError:
                 lugar_idx = 0
             
-            # --- CORRECCIÓN DE ERROR: SELECTBOX FUERA DEL FORMULARIO ---
-            # Este selectbox debe estar fuera del form para que el on_change funcione.
+            # ** SELECTBOX DE LUGAR DEBE ESTAR FUERA DEL FORMULARIO **
             edited_lugar_display = st.selectbox(
                 "📍 Castillo/Lugar de Atención", 
                 options=LUGARES, 
                 index=lugar_idx, 
                 key="edit_lugar", 
-                on_change=update_edited_lugar 
+                on_change=update_edited_lugar # Este callback ahora funciona
             )
 
             items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
@@ -655,10 +661,9 @@ if st.session_state.edit_index is not None:
             )
             # ------------------------------------------------------------------
         
-        # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO (CORRECCIÓN DE ERROR)
-        # Los botones y la lógica de guardado sí deben estar dentro del st.form.
+        # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO
         with st.form("edit_form", clear_on_submit=False):
-            # Aseguramos que los valores sean accesibles dentro del form si es necesario
+            # Clonamos valores finales del estado de sesión para el guardado dentro del form
             st.session_state.form_lugar = st.session_state.edit_lugar
             st.session_state.form_item = st.session_state[item_key]
             st.session_state.form_paciente = st.session_state.edit_paciente
