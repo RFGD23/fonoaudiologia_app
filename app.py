@@ -48,7 +48,7 @@ conn = st.connection(
     port=5432,
     database="postgres",
     username="postgres",
-    password="Temporal456" # <--- TU CONTRASEÑA SIMPLE
+    password="DomiLeo1702" # <--- TU CONTRASEÑA SIMPLE
 )
 
 @st.cache_data(ttl=3600) # Carga los datos y los guarda en caché por 1 hora
