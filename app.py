@@ -4,7 +4,6 @@ from datetime import date
 import os
 import json 
 import time 
-import base64 
 import plotly.express as px
 
 # ===============================================
@@ -23,9 +22,22 @@ def load_config(filename):
         with open(filename, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        return {} 
+        # Crea un archivo con configuración base si no existe
+        if filename == PRECIOS_FILE:
+            default_data = {'ALERCE': {'Item1': 30000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000}}
+        elif filename == DESCUENTOS_FILE:
+            default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
+        elif filename == COMISIONES_FILE:
+            default_data = {'EFECTIVO': 0.00, 'TARJETA': 0.03}
+        elif filename == REGLAS_FILE:
+            default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000}}
+        else:
+            default_data = {}
+        save_config(default_data, filename)
+        return default_data
     except json.JSONDecodeError:
-        return {}
+        st.error(f"Error: El archivo {filename} tiene un formato JSON inválido. Revisa su contenido.")
+        return {} 
 
 def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
@@ -33,22 +45,10 @@ def save_config(data, filename):
         json.dump(data, f, indent=4)
         
 # --- Cargar Variables Globales desde JSON ---
-try:
-    PRECIOS_BASE_CONFIG = load_config(PRECIOS_FILE)
-    DESCUENTOS_LUGAR = load_config(DESCUENTOS_FILE)
-    COMISIONES_PAGO = load_config(COMISIONES_FILE)
-    DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
-except:
-    # Fallback si no existen los archivos JSON o hay error
-    PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, 'ItemB': 35000}}
-    DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
-    COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
-    DESCUENTOS_REGLAS = {
-        'AMAR AUSTRAL': {
-            'LUNES': 0, 'MARTES': 8000, 'MIÉRCOLES': 0, 
-            'JUEVES': 0, 'VIERNES': 6500, 'SÁBADO': 0, 'DOMINGO': 0
-        }
-    }
+PRECIOS_BASE_CONFIG = load_config(PRECIOS_FILE)
+DESCUENTOS_LUGAR = load_config(DESCUENTOS_FILE)
+COMISIONES_PAGO = load_config(COMISIONES_FILE)
+DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
 
 
 LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys()))
@@ -93,10 +93,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
-    # -------------------------------------------------------------------
-    # --- LÓGICA DE DESCUENTO FIJO CONDICIONAL (Administrable) ---
-    # -------------------------------------------------------------------
-    
+    # --- LÓGICA DE DESCUENTO FIJO CONDICIONAL ---
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
     if lugar in DESCUENTOS_REGLAS:
@@ -111,11 +108,8 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         
         # Si existe una regla específica para el día y no es 0, la usamos en lugar del valor base
         regla_especial = DESCUENTOS_REGLAS[lugar].get(dia_nombre)
-        if regla_especial is not None and regla_especial != 0:
+        if regla_especial is not None:
             desc_fijo_lugar = regla_especial 
-
-    # -------------------------------------------------------------------
-    # -------------------------------------------------------------------
 
     # Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
@@ -137,57 +131,23 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     }
 
 def update_edited_lugar():
-    """Actualiza el lugar seleccionado en el modal de edición (Sigue siendo necesario para la edición)."""
+    """Actualiza el lugar seleccionado en el modal de edición."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
-
-# --- FUNCIONES PARA FONDO SÓLIDO (DARK MODE) ---
 def set_dark_mode_theme():
     """Establece transparencia y ajusta la apariencia de los contenedores para el tema oscuro."""
-    
     dark_mode_css = '''
     <style>
-    /* 1. Fondo principal: Streamlit ya usa gris oscuro por defecto, lo respetamos */
-    .stApp, [data-testid="stAppViewBlock"], .main {
-        background-color: transparent !important; 
-        background-image: none !important;
-    }
-    
-    /* 2. Barra Lateral (Sidebar) - Le damos un fondo ligeramente más opaco y oscuro */
-    [data-testid="stSidebarContent"] {
-        background-color: rgba(30, 30, 30, 0.9) !important; 
-        color: white; 
-    }
-
-    /* 3. Bloques de Contenido (Forms, Expander, Metrics) */
+    .stApp, [data-testid="stAppViewBlock"], .main { background-color: transparent !important; background-image: none !important; }
+    [data-testid="stSidebarContent"] { background-color: rgba(30, 30, 30, 0.9) !important; color: white; }
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
     .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child { 
-        background-color: rgba(10, 10, 10, 0.6) !important; 
-        border-radius: 10px;
-        padding: 10px;
+        background-color: rgba(10, 10, 10, 0.6) !important; border-radius: 10px; padding: 10px;
     } 
-
-    /* 4. Tablas y Dataframes */
-    .stDataFrame, .stTable {
-        background-color: rgba(0, 0, 0, 0.4) !important; 
-    }
-    
-    /* 5. Asegurar que el texto sea claro sobre el fondo oscuro */
-    h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] *, [data-testid="stHeader"] * { 
-        color: white !important; 
-    }
-
-    /* 6. Ajuste para textos en Expander */
-    .streamlit-expander label {
-        color: white !important;
-    }
-    
-    /* 7. Asegurar que los botones de radio/checkbox se vean bien */
-    div.stRadio > label {
-        color: white !important;
-    }
-
+    .stDataFrame, .stTable { background-color: rgba(0, 0, 0, 0.4) !important; }
+    h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] *, [data-testid="stHeader"] * { color: white !important; }
+    .streamlit-expander label, div.stRadio > label { color: white !important; }
     </style>
     '''
     st.markdown(dark_mode_css, unsafe_allow_html=True)
@@ -197,7 +157,7 @@ def format_currency(value):
     return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ===============================================
-# 3. INTERFAZ DE USUARIO (FRONTEND) - ESTILO LÚDICO
+# 3. INTERFAZ DE USUARIO (FRONTEND)
 # ===============================================
 
 # 🚀 Configuración de la Página y Título
@@ -206,7 +166,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ➡️ EJECUTAR LA FUNCIÓN DEL TEMA OSCURO AQUÍ:
 set_dark_mode_theme()
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
@@ -239,35 +198,29 @@ with tab_registro:
     st.subheader("🎉 Nueva Aventura de Ingreso (Atención)")
     
     # --- USAR st.form PARA MEJOR MANEJO DE ENVIOS SIN F5 ---
-    # clear_on_submit=True limpia los inputs después del envío.
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles del Registro", expanded=True):
             
-            # --- LÓGICA DE CÁLCULO DE VALOR SUGERIDO EN CADA RERUN ---
+            # --- VALORES INICIALES PARA EL PRIMER CICLO (EVITA ERRORES DE KEY) ---
+            lugar_key_initial = LUGARES[0] if LUGARES else ''
             
-            # 1. Obtener el lugar seleccionado o su valor por defecto (para calcular el precio base)
-            # Intentamos obtener el valor del selectbox. Si no existe (primer ciclo), usamos el default.
-            lugar_seleccionado_key = st.session_state.get('form_lugar', LUGARES[0] if LUGARES else '')
-            lugar_key = lugar_seleccionado_key.upper()
+            # Si las claves del formulario existen, usamos el valor del estado de sesión.
+            # Si no existen (primer ciclo/después de submit), usamos el valor por defecto.
+            current_lugar_value = st.session_state.get('form_lugar', lugar_key_initial)
             
-            # 2. Filtrar ítems y obtener el ítem seleccionado o su valor por defecto
-            items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
-            item_seleccionado_key = st.session_state.get('form_item', items_filtrados[0] if items_filtrados else '')
+            # Para los items, necesitamos saber el lugar para filtrar
+            items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value.upper(), {}).keys())
+            item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
+            current_item_value = st.session_state.get('form_item', item_key_initial)
             
-            # 3. Calcular el precio sugerido
-            precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key, {}).get(item_seleccionado_key, 0)
-            
-            # -------------------------------------------------------------------------------------
-
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                # La fecha se inicializa y guarda en 'form_fecha'
                 fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha")
                 
-                # 1. SELECTBOX LUGAR (SIN CALLBACK - El cambio de valor recalcula el precio en el siguiente rerun)
+                # 1. SELECTBOX LUGAR
                 try:
-                    lugar_index = LUGARES.index(lugar_seleccionado_key)
+                    lugar_index = LUGARES.index(current_lugar_value)
                 except ValueError:
                     lugar_index = 0
 
@@ -276,29 +229,38 @@ with tab_registro:
                                                 key="form_lugar",
                                                 index=lugar_index)
                 
-                # 2. SELECTBOX ÍTEM (SIN CALLBACK)
+                # 2. SELECTBOX ÍTEM
+                # Obtenemos los ítems del LUGAR seleccionado en ESTE ciclo de ejecución (usando el valor de st.session_state.form_lugar)
+                lugar_key_current = st.session_state.form_lugar.upper()
+                items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
+                
                 try:
-                    # Usamos el valor de la clave 'form_item' del ciclo anterior para mantener la selección
-                    item_index = items_filtrados.index(item_seleccionado_key)
-                except ValueError:
-                    # Si el ítem previo no está en la nueva lista (por cambio de lugar), usamos el índice 0
+                    # Intentamos usar la selección actual. Si no existe en la nueva lista, usamos el primer ítem.
+                    item_index = items_filtrados_current.index(current_item_value)
+                except (ValueError, KeyError):
                     item_index = 0
-
+                    
                 item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
-                                                options=items_filtrados, 
+                                                options=items_filtrados_current, 
                                                 key="form_item",
                                                 index=item_index)
+                
+                # --- CÁLCULO DE PRECIO SUGERIDO (CORRECCIÓN) ---
+                # Usamos los valores recién seleccionados por el usuario
+                item_calc_for_price = st.session_state.form_item
+                precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
                 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago")
 
             with col2:
                 
-                # Usamos el precio sugerido/calculado para inicializar el number_input, pero permitimos override
+                # 3. VALOR BRUTO (utiliza el precio sugerido)
                 valor_bruto_input = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
-                    value=int(precio_base_sugerido), # Usamos el valor calculado arriba
+                    # El valor se inicializa con el precio sugerido. Si el usuario ya lo modificó, Streamlit mantiene su valor.
+                    value=int(precio_base_sugerido), 
                     step=1000,
                     key="form_valor_bruto" 
                 )
@@ -306,19 +268,16 @@ with tab_registro:
                 desc_adicional_manual = st.number_input(
                     "✂️ **Polvo Mágico Extra (Ajuste)**", 
                     min_value=-500000, 
-                    value=0, 
+                    value=st.session_state.get('form_desc_adic', 0), 
                     step=1000, 
                     key="form_desc_adic",
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
-                # Ejecutar el cálculo central en tiempo real (con los valores actuales de los widgets)
-                lugar_key_calc = st.session_state.form_lugar.upper()
-                item_calc = st.session_state.form_item
-                
+                # Ejecutar el cálculo central en tiempo real
                 resultados = calcular_ingreso(
-                    lugar_key_calc, 
-                    item_calc, 
+                    lugar_key_current, 
+                    item_calc_for_price, 
                     st.session_state.form_metodo_pago,
                     st.session_state.form_desc_adic,  
                     fecha_atencion=st.session_state.form_fecha, 
@@ -328,7 +287,6 @@ with tab_registro:
                 # Mostrar el resultado final y los detalles del descuento
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
-                # Etiqueta dinámica para el descuento fijo/condicional
                 desc_lugar_label = f"Tributo al Castillo ({st.session_state.form_lugar})"
                 if st.session_state.form_lugar.upper() in DESCUENTOS_REGLAS:
                     dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
@@ -352,12 +310,9 @@ with tab_registro:
                 if st.session_state.form_paciente == "":
                     st.error("Por favor, ingresa el nombre del paciente.")
                 else:
-                    # Usamos los valores finales del estado de sesión del formulario
-                    final_lugar_key = st.session_state.form_lugar.upper()
-                    
-                    # Recalculamos con los valores finales para asegurarnos de la precisión
+                    # 1. Recalculo final (Asegurando que usamos los valores del estado de sesión)
                     resultados_finales = calcular_ingreso(
-                        final_lugar_key, 
+                        st.session_state.form_lugar.upper(), 
                         st.session_state.form_item, 
                         st.session_state.form_metodo_pago, 
                         st.session_state.form_desc_adic, 
@@ -365,6 +320,7 @@ with tab_registro:
                         valor_bruto_override=st.session_state.form_valor_bruto
                     )
                     
+                    # 2. Creación del nuevo registro
                     nueva_atencion = {
                         "Fecha": st.session_state.form_fecha.strftime('%Y-%m-%d'), 
                         "Lugar": st.session_state.form_lugar, 
@@ -378,12 +334,18 @@ with tab_registro:
                         "Total Recibido": resultados_finales['total_recibido']
                     }
                     
-                    # Guardar los datos y forzar un re-run limpio
-                    st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
+                    # 3. Actualizar DataFrame y CSV (CORRECCIÓN GUARDADO)
+                    # Usamos pd.concat para agregar la nueva fila de manera robusta
+                    df_actualizado = pd.concat([
+                        st.session_state.atenciones_df, 
+                        pd.DataFrame([nueva_atencion])
+                    ], ignore_index=True)
+                    
+                    st.session_state.atenciones_df = df_actualizado
                     save_data(st.session_state.atenciones_df)
                     st.success(f"🎉 ¡Aventura registrada para {st.session_state.form_paciente}! El tesoro es {format_currency(resultados_finales['total_recibido'])}")
                     
-                    time.sleep(0.5)
+                    # 4. Forzar recarga para actualizar dashboard/listado de registros
                     st.rerun() 
 
 
@@ -496,7 +458,7 @@ with tab_dashboard:
         st.markdown("---")
         
         # ----------------------------------------------------
-        # NUEVA SECCIÓN: ANÁLISIS DE RENTABILIDAD Y COSTOS
+        # ANÁLISIS DE RENTABILIDAD Y COSTOS
         # ----------------------------------------------------
         st.header("⚖️ Análisis de Rentabilidad y Costos")
 
@@ -508,19 +470,16 @@ with tab_dashboard:
         
         col_r1, col_r2, col_r3 = st.columns(3)
 
-        # New KPI 1: Total Cost/Reductions
         col_r1.metric(
             "💰 Total Descuentos/Costos Aplicados", 
             format_currency(total_cost_reductions),
         )
 
-        # New KPI 2: Average Net Margin
         col_r2.metric(
             "📊 Ingreso Neto Promedio por Atención", 
             format_currency(avg_net_income)
         )
         
-        # New KPI 3: Average Cost per Attention
         avg_cost_reduction = total_cost_reductions / total_atenciones
         col_r3.metric(
             "💔 Costo Promedio por Atención",
@@ -532,7 +491,6 @@ with tab_dashboard:
         col_c1, col_c2 = st.columns(2)
         
         with col_c1:
-            # Chart 1: Cost Breakdown (Pie Chart)
             st.subheader("💔 Desglose de Costos (Maleficios)")
             cost_summary = pd.DataFrame({
                 'Tipo': ['Tributo Fijo al Lugar', 'Comisión Tarjeta', 'Ajuste Manual'],
@@ -554,7 +512,6 @@ with tab_dashboard:
             st.plotly_chart(fig_cost_breakdown, use_container_width=True)
 
         with col_c2:
-            # Chart 2: Monthly Profitability Trend
             st.subheader("📉 Evolución Mensual: Ingreso Neto vs. Costos")
 
             df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
@@ -633,7 +590,8 @@ with tab_dashboard:
 
             # --- BOTÓN DE ELIMINACIÓN ---
             if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta aventura (¡Cuidado con la magia negra!)"):
-                st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index)
+                # Se corrige la eliminación en el DataFrame de sesión
+                st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index, axis=0).reset_index(drop=True)
                 save_data(st.session_state.atenciones_df)
                 st.success(f"Aventura de {row['Paciente']} eliminada. Recargando el Libro...")
                 st.rerun()
@@ -730,8 +688,6 @@ with tab_dashboard:
             with col_edit2_out: 
                 
                 # --- MANEJO DEL VALOR BRUTO ---
-                
-                # Inicializamos el valor bruto de edición
                 if 'edit_valor_bruto' not in st.session_state:
                     initial_valor_bruto = int(data_to_edit['Valor Bruto'])
                 else:
@@ -753,10 +709,7 @@ with tab_dashboard:
                     key="edit_desc_adic"
                 )
 
-                # ------------------------------------------------------------------
                 # CÁLCULO Y DISPLAY DE RESULTADOS EN TIEMPO REAL 
-                # ------------------------------------------------------------------
-                
                 recalculo = calcular_ingreso(
                     st.session_state.edit_lugar.upper(), 
                     st.session_state.edit_item, 
@@ -781,7 +734,6 @@ with tab_dashboard:
                 st.success(
                     f"## 💎 NUEVO TOTAL LÍQUIDO: {format_currency(recalculo['total_recibido'])}"
                 )
-                # ------------------------------------------------------------------
             
             # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO DE EDICIÓN
             with st.form("edit_form", clear_on_submit=False):
@@ -835,10 +787,8 @@ with tab_config:
     st.header("⚙️ Configuración de Datos Maestros")
     st.markdown("⚠️ **¡Atención!** Esta sección modifica los precios base, descuentos y comisiones. Se requiere una clave de seguridad.")
     
-    # --- Clave de Seguridad (Variable para todo el módulo) ---
     CLAVE_MAESTRA = "DOMI1702"
     
-    # Contenedor para la clave que se usará en todas las pestañas de guardado
     clave_ingresada = st.text_input(
         "🔑 Ingrese la Clave Maestra para Guardar Cambios", 
         type="password", 
@@ -855,7 +805,6 @@ with tab_config:
     with tab_precios:
         st.subheader("Editar Precios Base por Castillo/Lugar")
 
-        # Conversión del diccionario a DataFrame para fácil edición
         data_for_edit = []
         for lugar, items in PRECIOS_BASE_CONFIG.items():
             for item, precio in items.items():
@@ -863,7 +812,6 @@ with tab_config:
         
         df_precios = pd.DataFrame(data_for_edit)
         
-        # Usar st.data_editor para edición interactiva
         edited_df = st.data_editor(
             df_precios,
             num_rows="dynamic",
@@ -880,14 +828,12 @@ with tab_config:
             key="precios_data_editor"
         )
         
-        # --- VERIFICACIÓN DE CLAVE AL GUARDAR ---
         if st.button("💾 Guardar Precios Actualizados", type="primary", key="save_precios"):
             if clave_ingresada == CLAVE_MAESTRA:
                 try:
-                    # Lógica de reconstrucción del diccionario y guardado
                     new_precios_config = {}
                     for index, row in edited_df.iterrows():
-                        lugar = str(row['Castillo/Lugar']).upper() # Asegurar mayúsculas para las claves al guardar
+                        lugar = str(row['Castillo/Lugar']).upper() 
                         item = str(row['Poción/Ítem'])
                         precio = int(row['Precio Base ($)'])
                         
@@ -896,7 +842,6 @@ with tab_config:
                                 new_precios_config[lugar] = {}
                             new_precios_config[lugar][item] = precio
 
-                    # Guardar en JSON y recargar la aplicación
                     save_config(new_precios_config, PRECIOS_FILE)
                     st.success("✅ Precios y Castillos/Lugares actualizados correctamente.")
                     st.cache_data.clear() 
@@ -912,7 +857,6 @@ with tab_config:
     with tab_descuentos_fijos:
         st.subheader("Editar Descuentos Fijos por Castillo/Lugar (Aplicación Constante)")
         
-        # Conversión del diccionario a DataFrame
         df_descuentos = pd.DataFrame(
             {'Castillo/Lugar': DESCUENTOS_LUGAR.keys(), 
              'Desc. Fijo ($)': DESCUENTOS_LUGAR.values()}
@@ -934,11 +878,9 @@ with tab_config:
             key="descuentos_data_editor"
         )
 
-        # --- VERIFICACIÓN DE CLAVE AL GUARDAR ---
         if st.button("💾 Guardar Descuentos Fijos", type="primary", key="save_descuentos"):
             if clave_ingresada == CLAVE_MAESTRA:
                 try:
-                    # Lógica de reconstrucción del diccionario y guardado
                     new_descuentos_config = {}
                     for index, row in edited_df_desc.iterrows():
                         lugar = str(row['Castillo/Lugar']).upper()
@@ -947,7 +889,6 @@ with tab_config:
                         if lugar:
                             new_descuentos_config[lugar] = descuento
                     
-                    # Guardar en JSON y recargar
                     save_config(new_descuentos_config, DESCUENTOS_FILE)
                     st.success("✅ Descuentos fijos por lugar actualizados correctamente.")
                     st.cache_data.clear()
@@ -962,10 +903,9 @@ with tab_config:
     with tab_comisiones:
         st.subheader("Editar Comisiones por Método de Pago")
         
-        # Conversión del diccionario a DataFrame
         df_comisiones = pd.DataFrame(
             {'Método de Pago': COMISIONES_PAGO.keys(), 
-             'Comisión (%)': [v * 100 for v in COMISIONES_PAGO.values()]} # Mostrar en porcentaje
+             'Comisión (%)': [v * 100 for v in COMISIONES_PAGO.values()]}
         )
 
         edited_df_com = st.data_editor(
@@ -984,20 +924,17 @@ with tab_config:
             key="comisiones_data_editor"
         )
         
-        # --- VERIFICACIÓN DE CLAVE AL GUARDAR ---
         if st.button("💾 Guardar Comisiones de Pago", type="primary", key="save_comisiones"):
             if clave_ingresada == CLAVE_MAESTRA:
                 try:
-                    # Lógica de reconstrucción del diccionario y guardado
                     new_comisiones_config = {}
                     for index, row in edited_df_com.iterrows():
                         metodo = str(row['Método de Pago']).upper()
-                        comision_pct = float(row['Comisión (%)']) / 100.0 # Convertir porcentaje a decimal
+                        comision_pct = float(row['Comisión (%)']) / 100.0
                         
                         if metodo:
                             new_comisiones_config[metodo] = comision_pct
                     
-                    # Guardar en JSON y recargar
                     save_config(new_comisiones_config, COMISIONES_FILE)
                     st.success("✅ Comisiones por método de pago actualizadas correctamente.")
                     st.cache_data.clear()
@@ -1013,10 +950,9 @@ with tab_config:
         st.subheader("📅 Descuentos Condicionales por Día de la Semana")
         st.info("Aquí se definen descuentos específicos por día que **SOBRESCRIBEN** el Descuento Fijo del Lugar. Use 0 para mantener el descuento fijo normal del lugar.")
         
-        # 1. Preparar el DataFrame para la edición de reglas
         data_reglas = []
-        for lugar in LUGARES: # Iteramos sobre todos los lugares existentes
-            reglas_lugar = DESCUENTOS_REGLAS.get(lugar, {})
+        for lugar in LUGARES: 
+            reglas_lugar = DESCUENTOS_REGLAS.get(lugar.upper(), {}) # Usamos .upper() para asegurar consistencia
             for dia in DIAS_SEMANA:
                 data_reglas.append({
                     'Castillo/Lugar': lugar,
@@ -1038,7 +974,6 @@ with tab_config:
                     min_value=0,
                     step=1000
                 ),
-                # El lugar y el día deben ser columnas no editables para mantener la coherencia
                 "Castillo/Lugar": st.column_config.TextColumn(disabled=True),
                 "Día de la Semana": st.column_config.TextColumn(disabled=True),
             },
@@ -1050,7 +985,6 @@ with tab_config:
                 try:
                     new_reglas_config = {}
                     
-                    # Reconstruir el diccionario jerárquico
                     for index, row in edited_df_reglas.iterrows():
                         lugar = str(row['Castillo/Lugar']).upper()
                         dia = str(row['Día de la Semana']).upper()
