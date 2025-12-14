@@ -120,7 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (CORREGIDO PARA SER DINÁMICO) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (CORREGIDO PARA SER TRANSPARENTE Y DINÁMICO) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -133,18 +133,54 @@ def get_base64_of_file(bin_file):
     return base64.b64encode(data).decode()
 
 def set_background(png_file):
-    """Establece la imagen de fondo de la aplicación usando CSS inyectado."""
+    """Establece la imagen de fondo y la transparencia de los contenedores."""
     bin_str = get_base64_of_file(png_file)
     if not bin_str:
         return
         
+    # *************************************************************************
+    # CSS INYECTADO: HACE LOS CONTENEDORES INTERNOS SEMITRANSPARENTES
+    # *************************************************************************
     page_bg_img = f'''
     <style>
+    /* 1. Fondo de la Aplicación (con scroll) */
     .stApp {{
-    background-image: url("data:image/png;base64,{bin_str}");
-    background-size: cover; 
-    background-attachment: scroll; /* CAMBIO CLAVE: Imagen se mueve con el scroll */
+        background-image: url("data:image/png;base64,{bin_str}");
+        background-size: cover; /* o 'repeat' si es un patrón */
+        background-attachment: scroll; /* La imagen se mueve con el contenido */
     }}
+
+    /* 2. HACE LOS CONTENEDORES PRINCIPALES Y WIDGETS SEMITRANSPARENTES */
+    /* st.Expander, st.tabs, y el contenedor principal de los inputs */
+    .css-1r6dm1 {{ 
+        background-color: rgba(0, 0, 0, 0.4); /* Fondo ligeramente oscuro para contraste */
+        border-radius: 10px;
+        padding: 10px;
+    }} 
+
+    /* Inputs (Text, Selectbox, Date, Number) */
+    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child {{
+        background-color: rgba(255, 255, 255, 0.1); /* Fondo muy claro y transparente para los inputs */
+    }}
+    
+    /* 3. Ajuste de las Métricas (KPIs) y Bloques */
+    [data-testid="stMetric"], [data-testid="stVerticalBlock"] {{
+        background-color: rgba(0, 0, 0, 0.3); /* Fondo para métricas y bloques */
+        border-radius: 10px;
+        padding: 10px;
+    }}
+    
+    /* 4. Barra Lateral (Sidebar) */
+    [data-testid="stSidebarContent"] {{
+        background-color: rgba(0, 0, 0, 0.7); /* Fondo oscuro semitransparente para mejor lectura */
+        padding-top: 50px;
+    }}
+    
+    /* 5. Fondo de las tablas y dataframes */
+    .stDataFrame, .stTable {{
+        background-color: rgba(0, 0, 0, 0.2); 
+    }}
+    
     </style>
     '''
     st.markdown(page_bg_img, unsafe_allow_html=True)
@@ -496,7 +532,7 @@ if st.session_state.edit_index is not None:
 
     with st.expander(f"📝 Editar Aventura para {data_to_edit['Paciente']}", expanded=True):
         
-        st.subheader("Modificar Datos de la Aventura")
+        st.subheader("Modificar Datos de la Atención")
         
         col_edit1_out, col_edit2_out = st.columns(2)
         
