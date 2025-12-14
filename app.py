@@ -139,12 +139,15 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     # 2.1. Revisar si existe una regla especial para el día
     if lugar_upper in DESCUENTOS_REGLAS:
         try:
+            # Asegurarse de que el objeto fecha sea una instancia de date
             if isinstance(fecha_atencion, pd.Timestamp):
-                dia_semana_num = fecha_atencion.weekday()
+                fecha_obj = fecha_atencion.date()
             elif isinstance(fecha_atencion, date):
-                dia_semana_num = fecha_atencion.weekday()
+                fecha_obj = fecha_atencion
             else:
-                dia_semana_num = date.today().weekday()
+                fecha_obj = date.today()
+            
+            dia_semana_num = fecha_obj.weekday()
             
             dia_nombre = DIAS_SEMANA[dia_semana_num].upper() 
             regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
@@ -214,10 +217,10 @@ def force_recalculate():
     """
     Función de callback simple para asegurar que el estado de la sesión
     se ha actualizado. No requiere st.rerun().
+    
+    Se usa en st.number_input, st.date_input y st.radio para forzar el rerun
+    y actualizar los cálculos dependientes.
     """
-    # Esta función está vacía pero Streamlit detecta que 
-    # los number_input cambiaron (lo que ya actualizó st.session_state) 
-    # y automáticamente fuerza el rerun para actualizar el cálculo final.
     pass
 
 def update_edit_price():
@@ -420,15 +423,28 @@ with tab_registro:
                 col1, col2 = st.columns([1, 1])
 
                 with col1:
-                    # Widgets simples sin on_change
-                    fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha") 
+                    # WIDGET CORREGIDO 1: st.date_input
+                    fecha = st.date_input(
+                        "🗓️ Fecha de Atención", 
+                        date.today(), 
+                        key="form_fecha",
+                        on_change=force_recalculate # <--- CORRECCIÓN CLAVE
+                    ) 
                     paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                     
                     try:
                         pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
                     except ValueError:
                         pago_idx = 0
-                    metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago", index=pago_idx)
+                        
+                    # WIDGET CORREGIDO 2: st.radio
+                    metodo_pago = st.radio(
+                        "💳 Método de Pago Mágico", 
+                        options=METODOS_PAGO, 
+                        key="form_metodo_pago", 
+                        index=pago_idx,
+                        on_change=force_recalculate # <--- CORRECCIÓN CLAVE
+                    )
                     
                 with col2:
                     
@@ -452,7 +468,8 @@ with tab_registro:
                     current_lugar_upper = st.session_state.form_lugar 
                     
                     try:
-                        current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()]
+                        # Se asegura que se usa la fecha actualizada del session_state
+                        current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()] 
                     except Exception:
                         current_day_name = "N/A"
                         
@@ -834,7 +851,9 @@ with tab_dashboard:
             with col_edit1_out:
                 edited_fecha = st.date_input("🗓️ Fecha de Atención", 
                                                  value=initial_date, 
-                                                 key="edit_fecha")
+                                                 key="edit_fecha",
+                                                 on_change=force_recalculate # AÑADIDO PARA LA REACTIVIDAD
+                                                 )
                 
                 try:
                     lugar_idx = LUGARES.index(st.session_state.edited_lugar_state)
@@ -876,7 +895,12 @@ with tab_dashboard:
                     pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'].upper()) # Aseguramos mayúsculas
                 except ValueError:
                     pago_idx = 0
-                edited_metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
+                edited_metodo_pago = st.radio("💳 Método de Pago Mágico", 
+                                              options=METODOS_PAGO, 
+                                              index=pago_idx, 
+                                              key="edit_metodo",
+                                              on_change=force_recalculate # AÑADIDO PARA LA REACTIVIDAD
+                                             )
             
             with col_edit2_out: 
                 
