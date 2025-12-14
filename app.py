@@ -240,16 +240,30 @@ if not df.empty:
         df = df[df['Ítem'] == filtro_item]
     
     # ----------------------------------------------------
-    # FILTRO POR RANGO DE FECHA
+    # FILTRO POR RANGO DE FECHA (Corregido: Manejo de datos vacíos)
     # ----------------------------------------------------
     
+    # Si después de los filtros Lugar/Ítem el DF está vacío, detenemos la ejecución
     if df.empty:
         st.warning("No hay datos disponibles para la combinación de Lugar/Ítem seleccionada.")
         st.stop()
         
-    min_date = df['Fecha'].min().date()
-    max_date = df['Fecha'].max().date()
-    
+    # --- CORRECCIÓN DE ERROR (Manejo de NaT/DataFrame vacío) ---
+    try:
+        # Intentamos obtener las fechas min y max del DF filtrado
+        min_date = df['Fecha'].min().date()
+        max_date = df['Fecha'].max().date()
+        
+        # Validación de seguridad: si las fechas son anormalmente antiguas (indicando error de Pandas)
+        if min_date.year < 2000: 
+            raise ValueError 
+            
+    except ValueError:
+        # Si hay un error (ej. el DF no contiene fechas válidas), usamos la fecha de hoy
+        min_date = date.today()
+        max_date = date.today()
+    # -----------------------------------------------------------
+
     st.subheader("Filtro de Periodo")
     col_start, col_end = st.columns(2)
     
@@ -338,7 +352,7 @@ if not df.empty:
     st.plotly_chart(fig_lugar, use_container_width=True)
 
     # ----------------------------------------------------
-    # VISTA PREVIA Y ELIMINACIÓN DE DATOS (NUEVA FUNCIÓN)
+    # VISTA PREVIA Y ELIMINACIÓN DE DATOS
     # ----------------------------------------------------
     st.header("📋 Gestión de Atenciones Registradas")
 
@@ -358,7 +372,6 @@ if not df.empty:
     st.markdown("---") 
 
     # Iterar sobre las filas y crear el botón de eliminación
-    # Usamos .iterrows() sobre el DF filtrado, pero el índice que obtenemos es el índice original
     for index, row in df_display.iterrows():
         
         # Crear una estructura de columnas para cada fila
@@ -370,14 +383,13 @@ if not df.empty:
         cols[2].write(f"${row['Total Recibido']:,.0f}".replace(",", "."))
         cols[3].write(row['Paciente'])
         
-        # Botón de eliminación. La clave única (key=f"delete_{index}") es crucial
+        # Botón de eliminación.
         if cols[4].button("🗑️", key=f"delete_{index}", help="Eliminar esta atención de forma permanente"):
             
             # Eliminar la fila del DataFrame original (que está en session_state)
             st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index)
             
             # Guardar el DataFrame actualizado al disco
-            # Asegúrese de que la función save_data esté definida en su Sección 2
             save_data(st.session_state.atenciones_df)
             
             st.success(f"Atención del paciente {row['Paciente']} eliminada. Recargando...")
@@ -396,4 +408,5 @@ if not df.empty:
         mime='text/csv',
     )
 else:
+    # Este es el bloque que se ejecuta si el DF está vacío desde el inicio
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
