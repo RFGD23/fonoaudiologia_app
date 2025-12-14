@@ -97,7 +97,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'valor_bruto': valor_bruto,
         'desc_fijo_lugar': desc_fijo_lugar,
         'desc_tarjeta': desc_tarjeta,
-        'total_recibido': max(0, total_recibido)
+        'total_recibido': total_recibido)
     }
 
 # ===============================================
