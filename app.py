@@ -31,7 +31,7 @@ try:
     COMISIONES_PAGO = load_config('comisiones_pago.json')
 except:
     # Fallback si no existen los archivos JSON (solo para que el código compile si faltan las bases de datos externas)
-    PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000}, 'AMAR AUSTRAL': {'ItemA': 25000}}
+    PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ItemA': 25000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
 
@@ -65,6 +65,15 @@ def save_data(df):
 
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
+    
+    # Manejar caso de ítem/lugar nulo por si falla la selección inicial
+    if not lugar or not item:
+         return {
+            'valor_bruto': 0,
+            'desc_fijo_lugar': 0,
+            'desc_tarjeta': 0,
+            'total_recibido': 0
+        }
     
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
@@ -100,6 +109,15 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
+# Función de Callback para actualizar el estado del lugar
+def update_edited_lugar():
+    """
+    Actualiza el lugar seleccionado inmediatamente (fuera del form)
+    para que la lista de Ítems se recalcule al instante.
+    """
+    st.session_state.edited_lugar_state = st.session_state.edit_lugar
+
+
 # ===============================================
 # 3. INTERFAZ DE USUARIO (FRONTEND)
 # ===============================================
@@ -125,7 +143,7 @@ if 'atenciones_df' not in st.session_state:
 if 'edit_index' not in st.session_state:
     st.session_state.edit_index = None 
 
-# --- Variable para almacenar el lugar seleccionado en la edición (CORRECCIÓN DEPENDENCIA) ---
+# --- Variable para almacenar el lugar seleccionado en la edición ---
 if 'edited_lugar_state' not in st.session_state:
     st.session_state.edited_lugar_state = None 
 
@@ -436,13 +454,8 @@ else:
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (CON GESTIÓN DE DEPENDENCIA)
+# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN DE CALLBACK)
 # ===============================================
-
-# Función de Callback para actualizar el estado del lugar
-def update_edited_lugar():
-    """Actualiza el lugar seleccionado inmediatamente y fuerza el re-renderizado del Ítem."""
-    st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 if st.session_state.edit_index is not None:
     
@@ -456,67 +469,68 @@ if st.session_state.edit_index is not None:
         st.rerun()
 
     # Si el estado intermedio no está seteado (primera carga del modal), inicializarlo
-    if st.session_state.edited_lugar_state is None:
+    if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
         st.session_state.edited_lugar_state = data_to_edit['Lugar']
 
     with st.expander(f"📝 Editar Atención para {data_to_edit['Paciente']}", expanded=True):
         
-        with st.form("edit_form", clear_on_submit=False):
-            st.subheader("Modificar Datos de la Atención")
+        st.subheader("Modificar Datos de la Atención")
+        
+        # 1. Widgets FUERA DEL FORMULARIO (Lugar e Ítem, para manejar la dependencia)
+        col_edit1_out, col_edit2_out = st.columns(2)
+        
+        with col_edit1_out:
+            edited_fecha = st.date_input("🗓️ Fecha de Atención", 
+                                          value=data_to_edit['Fecha'].date(), 
+                                          key="edit_fecha")
             
-            col_edit1, col_edit2 = st.columns(2)
+            # WIDGET LUGAR (FUERA DEL FORMULARIO, CON CALLBACK)
+            try:
+                lugar_idx = LUGARES.index(st.session_state.edited_lugar_state)
+            except ValueError:
+                lugar_idx = 0
+            
+            edited_lugar_display = st.selectbox(
+                "📍 Lugar de Atención", 
+                options=LUGARES, 
+                index=lugar_idx, 
+                key="edit_lugar", # Clave para el valor del widget
+                on_change=update_edited_lugar # EL CALLBACK AHORA FUNCIONA
+            )
 
-            with col_edit1:
-                edited_fecha = st.date_input("🗓️ Fecha de Atención", value=data_to_edit['Fecha'].date())
-                
-                # --- WIDGET LUGAR CON CALLBACK ---
-                try:
-                    lugar_idx = LUGARES.index(st.session_state.edited_lugar_state)
-                except ValueError:
-                    lugar_idx = 0
-                    
-                edited_lugar = st.selectbox(
-                    "📍 Lugar de Atención", 
-                    options=LUGARES, 
-                    index=lugar_idx, 
-                    key="edit_lugar", # Clave para el valor dentro del form
-                    on_change=update_edited_lugar # Llama a la función al cambiar
-                )
-                
-                # --- WIDGET ÍTEM DEPENDIENTE DEL ESTADO INTERMEDIO ---
-                
-                # Usamos el lugar que está en el estado intermedio (edited_lugar_state)
-                items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
-                
-                # 1. Calcular el valor preseleccionado.
-                try:
-                    # Si el ítem original existe en la nueva lista de opciones
-                    current_item_index = items_edit.index(data_to_edit['Ítem'])
-                except ValueError:
-                    # Si el ítem original NO existe en la lista actual, seleccionamos el primero (índice 0)
-                    current_item_index = 0
-                
-                # 2. Clave dinámica: DEBE depender del lugar que está en el estado intermedio.
-                item_key = f"edit_item_for_{st.session_state.edited_lugar_state}" 
-
-                edited_item = st.selectbox(
-                    "📋 Ítem/Procedimiento", 
-                    options=items_edit, 
-                    index=current_item_index, 
-                    key=item_key 
-                )
-                
-                # --- FIN DE DEPENDENCIA ---
-                
-                edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'], key="edit_paciente")
-                
-                try:
-                    pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
-                except ValueError:
-                    pago_idx = 0
-                edited_metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
-
-            with col_edit2:
+            # WIDGET ÍTEM DEPENDIENTE DEL ESTADO INTERMEDIO
+            items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
+            
+            # Si el lugar cambió, el ítem debe resetearse al primero
+            try:
+                # Si el ítem original existe en la nueva lista de opciones
+                current_item_index = items_edit.index(data_to_edit['Ítem'])
+            except ValueError:
+                current_item_index = 0
+            
+            # Usar una clave basada en el lugar actual para asegurar que se re-renderice
+            item_key = f"edit_item_for_{st.session_state.edited_lugar_state}" 
+            
+            edited_item_display = st.selectbox(
+                "📋 Ítem/Procedimiento", 
+                options=items_edit, 
+                index=current_item_index, 
+                key=item_key 
+            )
+            
+            edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'], key="edit_paciente")
+            
+            try:
+                pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
+            except ValueError:
+                pago_idx = 0
+            edited_metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
+        
+        # 2. Widgets DENTRO DEL FORMULARIO (Campos numéricos y botones de acción)
+        with st.form("edit_form", clear_on_submit=False):
+            
+            # Renderizar la segunda columna DENTRO del form (los widgets ya se definieron arriba)
+            with col_edit2_out: 
                 edited_valor_bruto = st.number_input(
                     "💰 **Valor Bruto (Manual)**", 
                     min_value=0, 
@@ -533,13 +547,12 @@ if st.session_state.edit_index is not None:
                 )
                 
                 # Recalcular el total líquido: USAMOS LOS VALORES DE LAS CLAVES DEL WIDGET (st.session_state.clave)
-                # NOTA: Usamos el valor del Ítem y Lugar que están en el estado, ya que son los que se muestran
                 recalculo = calcular_ingreso(
                     st.session_state.edit_lugar, 
-                    st.session_state[item_key], # Usamos el valor del Ítem con la clave dinámica
+                    st.session_state[item_key], 
                     st.session_state.edit_metodo, 
                     st.session_state.edit_desc_adic, 
-                    fecha_atencion=edited_fecha, 
+                    fecha_atencion=st.session_state.edit_fecha, 
                     valor_bruto_override=st.session_state.edit_valor_bruto 
                 )
                 
@@ -551,13 +564,13 @@ if st.session_state.edit_index is not None:
 
             col_btn1, col_btn2 = st.columns([1, 1])
 
-            # Botón de Guardar
+            # Botón de Guardar (DENTRO DEL FORMULARIO)
             if col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary"):
                 # 3. Guardar los cambios (Usamos los valores finales del state)
                 st.session_state.atenciones_df.loc[index_to_edit] = {
-                    "Fecha": edited_fecha.strftime('%Y-%m-%d'), 
+                    "Fecha": st.session_state.edit_fecha.strftime('%Y-%m-%d'), 
                     "Lugar": st.session_state.edit_lugar, 
-                    "Ítem": st.session_state[item_key], # Valor final del ítem
+                    "Ítem": st.session_state[item_key], 
                     "Paciente": st.session_state.edit_paciente, 
                     "Método Pago": st.session_state.edit_metodo,
                     "Valor Bruto": recalculo['valor_bruto'],
@@ -573,7 +586,7 @@ if st.session_state.edit_index is not None:
                 st.success(f"🎉 Atención para {st.session_state.edit_paciente} actualizada exitosamente. Recargando...")
                 st.rerun()
                 
-            # Botón de Cancelar
+            # Botón de Cancelar (DENTRO DEL FORMULARIO)
             if col_btn2.form_submit_button("❌ Cancelar Edición"):
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
