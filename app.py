@@ -113,94 +113,73 @@ def update_edited_lugar():
     """Actualiza el lugar seleccionado inmediatamente."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
+# ❌ ELIMINAMOS get_base64_of_file y set_background
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN FINAL: Altura y Cobertura) ---
-@st.cache_data
-def get_base64_of_file(bin_file):
-    """Convierte un archivo binario (como una imagen) a Base64."""
-    if not os.path.exists(bin_file):
-        st.warning(f"⚠️ Advertencia: No se encontró el archivo de fondo '{bin_file}'. El fondo no será visible.")
-        return ""
-    try:
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except Exception as e:
-        st.error(f"Error al leer el archivo de fondo: {e}")
-        return ""
+# --- FUNCIONES PARA FONDO SÓLIDO (BLANCO) ---
+def set_solid_white_theme():
+    """Establece un fondo blanco puro y ajusta la apariencia de los contenedores."""
+    # Nota: El tema principal ya está en "light" en st.set_page_config
 
-def set_background(img_file):
-    """Establece la imagen de fondo con máxima cobertura y altura."""
-    bin_str = get_base64_of_file(img_file)
-    
-    if img_file.lower().endswith('.jpg') or img_file.lower().endswith('.jpeg'):
-        mime_type = "image/jpeg"
-    else:
-        mime_type = "image/png" 
-
-    if len(bin_str) < 100:
-        return
-
-    # *************************************************************************
-    # CSS INYECTADO: SOLUCIÓN FINAL CON AJUSTE DE ALTURA
-    # *************************************************************************
-    page_bg_img = f'''
+    solid_white_css = '''
     <style>
-    /* 0. Habilitar Altura Completa en HTML y BODY */
-    html, body {{
-        height: 100% !important; 
-        min-height: 100vh !important;
-    }}
-
-    /* 1. Aplicar el fondo al BODY (Elemento raíz) */
-    body {{
-        background-image: url("data:{mime_type};base64,{bin_str}");
-        background-size: cover; 
-        background-position: center; /* Aseguramos centrado */
-        background-attachment: fixed !important; 
-        background-repeat: no-repeat;
-    }}
+    /* 1. Fondo Blanco Puro en el Contenedor Raíz */
+    /* stApp: Contenedor principal de Streamlit */
+    .stApp, [data-testid="stAppViewBlock"], .main {
+        background-color: #FFFFFF !important; /* Blanco puro */
+        background-image: none !important; /* Elimina cualquier rastro del fondo de imagen anterior */
+    }
     
-    /* 2. Forzar la transparencia y altura completa en contenedores de Streamlit */
-    .stApp, .main, [data-testid="stAppViewBlock"] {{
-        background-color: transparent !important; 
-        min-height: 100vh !important; /* Asegura que estos contenedores también cubran el 100% de la ventana */
-    }}
+    /* 2. Barra Lateral (Sidebar) - Fondo Claro */
+    [data-testid="stSidebarContent"] {
+        background-color: #F8F8F8 !important; /* Gris muy claro para diferenciar */
+        color: black;
+    }
 
-    /* Contenido de la barra lateral (con transparencia parcial) */
-    [data-testid="stSidebarContent"] {{
-        background-color: rgba(0, 0, 0, 0.7) !important; 
-        padding-top: 50px;
-    }}
-    
-    /* 3. Contenedores de inputs y métricas (mantener transparencia en los bloques de contenido) */
+    /* 3. Bloques de Contenido (Forms, Expander, Metrics) */
+    /* Hacemos los contenedores ligeramente más oscuros para que resalten sobre el blanco */
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
-    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child {{ 
-        background-color: rgba(0, 0, 0, 0.5) !important;
+    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child { 
+        background-color: #F0F0F0 !important; /* Gris claro suave */
         border-radius: 10px;
         padding: 10px;
-    }} 
+    } 
 
-    /* Asegurar que la raíz del Dataframe tenga transparencia */
-    .stDataFrame, .stTable {{
-        background-color: rgba(0, 0, 0, 0.3) !important; 
-    }}
+    /* 4. Tablas y Dataframes */
+    .stDataFrame, .stTable {
+        background-color: #EAEAEA !important; /* Gris ligeramente más oscuro para las tablas */
+    }
+    
+    /* 5. Asegurar que el texto sea oscuro sobre el fondo claro */
+    h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] * { /* Aplicamos color oscuro a todos los textos */
+        color: #333333 !important;
+    }
+
+    /* 6. Ajuste para que las tablas dentro de la sidebar sean visibles */
+    [data-testid="stSidebarContent"] .stDataFrame, [data-testid="stSidebarContent"] .stTable {
+        background-color: #E0E0E0 !important;
+    }
     
     </style>
     '''
-    st.markdown(page_bg_img, unsafe_allow_html=True)
+    st.markdown(solid_white_css, unsafe_allow_html=True)
 
 
 # ===============================================
 # 3. INTERFAZ DE USUARIO (FRONTEND) - ESTILO LÚDICO
 # ===============================================
 
-# ➡️ EJECUTAR LA FUNCIÓN DE FONDO AQUÍ:
-set_background('fondo_magico.png') 
-
 # 🚀 Configuración de la Página y Título
-st.set_page_config(page_title="🏰 Control de Ingresos Mágicos 🪄", layout="wide")
+st.set_page_config(
+    page_title="🏰 Control de Ingresos Mágicos 🪄", 
+    layout="wide",
+    # ➡️ CONFIGURACIÓN A TEMA CLARO
+    theme="light" 
+)
+
+# ➡️ EJECUTAR LA FUNCIÓN DEL TEMA CLARO AQUÍ:
+set_solid_white_theme()
+
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
