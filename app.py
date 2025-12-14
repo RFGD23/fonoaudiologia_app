@@ -5,7 +5,7 @@ import os
 import json 
 import time 
 import base64 
-import plotly.express as px  # <-- ¡CORRECCIÓN: IMPORTACIÓN DE PLOTLY EXPRESS!
+import plotly.express as px # Importación corregida de Plotly Express
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -120,7 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN FINAL Y DIAGNÓSTICO) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (FONDO FIJO / PARALAJE) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -142,16 +142,15 @@ def set_background(png_file):
     
     # 🚨 LÍNEA DE DIAGNÓSTICO (Silenciosa) 🚨
     if len(bin_str) < 100:
-        # Si la imagen no se carga, no inyectamos CSS de fondo para evitar problemas
         return
     # ------------------------------------
 
     # *************************************************************************
-    # CSS INYECTADO: SOLUCIÓN FINAL DE FONDO Y TRANSPARENCIA
+    # CSS INYECTADO: SOLUCIÓN FINAL CON FONDO FIJO (PARALAJE)
     # *************************************************************************
     page_bg_img = f'''
     <style>
-    /* 1. SOLUCIÓN DEFINITIVA PARA QUE EL FONDO SE MUEVA CON EL CONTENIDO */
+    /* 1. SOLUCIÓN CON FONDO FIJO (Paralaje) */
     [data-testid="stAppViewBlock"] {{
         background-color: transparent; 
     }}
@@ -160,7 +159,7 @@ def set_background(png_file):
     .main {{
         background-image: url("data:image/png;base64,{bin_str}");
         background-size: cover; 
-        background-attachment: scroll !important; /* Mover con el contenido */
+        background-attachment: fixed !important; /* <--- ¡FONDO FIJO / PARALAJE! */
         background-repeat: no-repeat;
         min-height: 100vh;
     }}
