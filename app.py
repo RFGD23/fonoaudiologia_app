@@ -120,8 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (FONDO FIJO / PARALAJE) ---
-
+# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN AGRESIVA) ---
 @st.cache_data
 def get_base64_of_file(bin_file):
     """Convierte un archivo binario (como una imagen) a Base64."""
@@ -137,73 +136,65 @@ def get_base64_of_file(bin_file):
         return ""
 
 def set_background(img_file):
-    """Establece la imagen de fondo usando CSS inyectado y transparencia."""
+    """Establece la imagen de fondo usando CSS inyectado y transparencia AGRESIVA."""
     bin_str = get_base64_of_file(img_file)
     
-    # Determinar el tipo MIME según la extensión del archivo para la compatibilidad
+    # Determinar el tipo MIME según la extensión del archivo
     if img_file.lower().endswith('.jpg') or img_file.lower().endswith('.jpeg'):
         mime_type = "image/jpeg"
     else:
         mime_type = "image/png" 
 
-    # 🚨 LÍNEA DE DIAGNÓSTICO (Silenciosa) 🚨
     if len(bin_str) < 100:
         return
-    # ------------------------------------
 
     # *************************************************************************
-    # CSS INYECTADO: SOLUCIÓN FINAL CON FONDO FIJO (PARALAJE)
+    # CSS INYECTADO: SOLUCIÓN MÁS AGRESIVA (Aplicando el fondo al BODY)
     # *************************************************************************
     page_bg_img = f'''
     <style>
-    /* 1. SOLUCIÓN CON FONDO FIJO (Paralaje) */
-    [data-testid="stAppViewBlock"] {{
-        background-color: transparent; 
-    }}
-    
-    /* Aplicamos el fondo al contenedor principal de Streamlit (.main) */
-    .main {{
+    /* 1. Aplicar el fondo al BODY (Elemento raíz de la página) */
+    body {{
         background-image: url("data:{mime_type};base64,{bin_str}");
         background-size: cover; 
-        background-attachment: fixed !important; /* FONDO FIJO / PARALAJE */
+        background-attachment: fixed !important; 
         background-repeat: no-repeat;
-        min-height: 100vh;
     }}
     
-    /* 2. Aseguramos que el contenedor raíz de Streamlit sea transparente */
+    /* 2. Forzar la transparencia en todos los contenedores de Streamlit */
+    /* stApp: Contenedor principal */
     .stApp {{
         background-color: transparent !important; 
     }}
 
-    /* 3. Contenedores Principales (Expander, Bloques de Inputs, etc.) */
-    .css-1r6dm1, .streamlit-expander {{ 
-        background-color: rgba(0, 0, 0, 0.5); /* Fondo oscuro semitransparente */
+    /* main: Contenedor del contenido */
+    .main {{
+        background-color: transparent !important;
+    }}
+
+    /* stAppViewBlock: Contenedor intermedio */
+    [data-testid="stAppViewBlock"] {{
+        background-color: transparent !important; 
+    }}
+
+    /* Contenido de la barra lateral (con transparencia parcial) */
+    [data-testid="stSidebarContent"] {{
+        background-color: rgba(0, 0, 0, 0.7) !important; 
+        padding-top: 50px;
+    }}
+    
+    /* 3. Contenedores de inputs y métricas (mantener transparencia en los bloques de contenido) */
+    .css-1r6dm1, .streamlit-expander, 
+    [data-testid="stMetric"], [data-testid="stVerticalBlock"],
+    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child {{ 
+        background-color: rgba(0, 0, 0, 0.5) !important;
         border-radius: 10px;
         padding: 10px;
     }} 
 
-    /* Inputs (Text, Selectbox, Date, Number) */
-    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child {{
-        background-color: rgba(255, 255, 255, 0.1); 
-        border-radius: 5px;
-    }}
-    
-    /* 4. Métricas (KPIs) y Bloques */
-    [data-testid="stMetric"], [data-testid="stVerticalBlock"] {{
-        background-color: rgba(0, 0, 0, 0.4); 
-        border-radius: 10px;
-        padding: 10px;
-    }}
-    
-    /* 5. Barra Lateral (Sidebar) */
-    [data-testid="stSidebarContent"] {{
-        background-color: rgba(0, 0, 0, 0.7); 
-        padding-top: 50px;
-    }}
-    
-    /* 6. Tablas y Dataframes */
+    /* Asegurar que la raíz del Dataframe tenga transparencia */
     .stDataFrame, .stTable {{
-        background-color: rgba(0, 0, 0, 0.3); 
+        background-color: rgba(0, 0, 0, 0.3) !important; 
     }}
     
     </style>
@@ -216,7 +207,7 @@ def set_background(img_file):
 # ===============================================
 
 # ➡️ EJECUTAR LA FUNCIÓN DE FONDO AQUÍ:
-set_background('fondo_magico.png') # <--- ¡AJUSTE FINAL: SE BUSCA 'fondo_magico.png'!
+set_background('fondo_magico.png') 
 
 # 🚀 Configuración de la Página y Título
 st.set_page_config(page_title="🏰 Control de Ingresos Mágicos 🪄", layout="wide")
