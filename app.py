@@ -449,27 +449,43 @@ if st.session_state.edit_index is not None:
             col_edit1, col_edit2 = st.columns(2)
 
             with col_edit1:
-                # La fecha debe ser un objeto date para el widget
                 edited_fecha = st.date_input("🗓️ Fecha de Atención", value=data_to_edit['Fecha'].date())
                 
-                # Para Lugar
+                # Lugar: Mantenemos la lógica de índice
                 try:
                     lugar_idx = LUGARES.index(data_to_edit['Lugar'])
                 except ValueError:
                     lugar_idx = 0
-                edited_lugar = st.selectbox("📍 Lugar de Atención", options=LUGARES, index=lugar_idx)
+                edited_lugar = st.selectbox("📍 Lugar de Atención", options=LUGARES, index=lugar_idx, key="edit_lugar")
                 
-                # Para Ítem (dependiente del lugar seleccionado)
+                # --- LÓGICA CORREGIDA PARA EL ÍTEM ---
+                
+                # 1. Obtener la lista de ítems basada en el lugar SELECCIONADO (edited_lugar)
                 items_edit = list(PRECIOS_BASE_CONFIG.get(edited_lugar, {}).keys())
+                
+                # 2. Determinar si el ítem original del registro (data_to_edit['Ítem']) existe en la nueva lista.
                 try:
+                    # Intentamos usar el índice del ítem original si sigue en la lista del nuevo lugar
                     current_item_index = items_edit.index(data_to_edit['Ítem'])
                 except ValueError:
+                    # Si no existe, usamos el primer elemento (índice 0)
                     current_item_index = 0
-                edited_item = st.selectbox("📋 Ítem/Procedimiento", options=items_edit, index=current_item_index)
+                
+                # 3. Clave Dinámica: Forzamos el renderizado del widget si el lugar cambia.
+                # Creamos una clave basada en el Lugar (edited_lugar)
+                item_key = f"edit_item_for_{edited_lugar}" 
+
+                edited_item = st.selectbox(
+                    "📋 Ítem/Procedimiento", 
+                    options=items_edit, 
+                    index=current_item_index, 
+                    key=item_key # Usamos la clave dinámica
+                )
+                
+                # --- FIN DE LÓGICA CORREGIDA ---
                 
                 edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'])
                 
-                # Para Método de Pago
                 try:
                     pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
                 except ValueError:
