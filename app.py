@@ -24,10 +24,17 @@ def load_config(filename):
         st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
         return {}
 
-# --- Cargar Variables Globales desde JSON ---
-PRECIOS_BASE_CONFIG = load_config('precios_base.json')
-DESCUENTOS_LUGAR = load_config('descuentos_lugar.json')
-COMISIONES_PAGO = load_config('comisiones_pago.json')
+# --- Cargar Variables Globales desde JSON (Asumiendo que existen 'precios_base.json', 'descuentos_lugar.json', etc.) ---
+try:
+    PRECIOS_BASE_CONFIG = load_config('precios_base.json')
+    DESCUENTOS_LUGAR = load_config('descuentos_lugar.json')
+    COMISIONES_PAGO = load_config('comisiones_pago.json')
+except:
+    # Fallback si no existen los archivos JSON (solo para que el código compile si faltan las bases de datos externas)
+    PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000}, 'AMAR AUSTRAL': {'ItemA': 25000}}
+    DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
+    COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
+
 
 # Variables de la aplicación (derivadas de la configuración)
 LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys()))
@@ -118,19 +125,23 @@ if 'atenciones_df' not in st.session_state:
 if 'edit_index' not in st.session_state:
     st.session_state.edit_index = None 
 
+# --- Variable para almacenar el lugar seleccionado en la edición (CORRECCIÓN DEPENDENCIA) ---
+if 'edited_lugar_state' not in st.session_state:
+    st.session_state.edited_lugar_state = None 
+
 # --- FORMULARIO DE INGRESO ---
 with st.expander("➕ Ingresar Nueva Atención", expanded=True):
     col1, col2 = st.columns([1, 1])
 
     with col1:
         fecha = st.date_input("🗓️ Fecha de Atención", date.today())
-        lugar_seleccionado = st.selectbox("📍 Lugar de Atención", options=LUGARES)
+        lugar_seleccionado = st.selectbox("📍 Lugar de Atención", options=LUGARES, key="new_lugar")
         
         items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).keys())
-        item_seleccionado = st.selectbox("📋 Ítem/Procedimiento", options=items_filtrados)
+        item_seleccionado = st.selectbox("📋 Ítem/Procedimiento", options=items_filtrados, key="new_item")
         
         paciente = st.text_input("👤 Nombre del Paciente/Asociado", "")
-        metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO)
+        metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, key="new_metodo_pago")
 
     with col2:
         precio_base = PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).get(item_seleccionado, 0)
@@ -139,7 +150,8 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
             "💰 **Valor Bruto (Sistema)**", 
             min_value=0, 
             value=int(precio_base), 
-            step=1000
+            step=1000,
+            key="new_valor_bruto"
         )
 
         desc_adicional_manual = st.number_input(
@@ -147,6 +159,7 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
             min_value=-500000, 
             value=0, 
             step=1000, 
+            key="new_desc_adic",
             help="Ingresa un valor positivo para descuentos o negativo para cargos."
         )
         
@@ -194,7 +207,6 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                     "Total Recibido": resultados['total_recibido']
                 }
                 
-                # Usamos .loc para asegurar que se añade con un nuevo índice
                 st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                 save_data(st.session_state.atenciones_df)
                 st.success(f"🎉 Atención registrada para {paciente} por ${resultados['total_recibido']:,.0f}.".replace(",", "."))
@@ -400,11 +412,11 @@ if not df.empty:
         # --- BOTÓN DE EDICIÓN ---
         if cols[4].button("✏️", key=f"edit_{index}", help="Editar esta atención"):
             st.session_state.edit_index = index
+            st.session_state.edited_lugar_state = row['Lugar'] # Inicializar el estado de edición del lugar
             st.rerun()
 
         # --- BOTÓN DE ELIMINACIÓN ---
         if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta atención de forma permanente"):
-            # Usar .loc para asegurar que solo se eliminan filas del DF completo
             st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index)
             save_data(st.session_state.atenciones_df)
             st.success(f"Atención del paciente {row['Paciente']} eliminada. Recargando...")
@@ -424,73 +436,79 @@ else:
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (CORRECCIÓN FINAL DE ÍTEMS)
+# 5. MODAL DE EDICIÓN DE REGISTRO (CON GESTIÓN DE DEPENDENCIA)
 # ===============================================
+
+# Función de Callback para actualizar el estado del lugar
+def update_edited_lugar():
+    """Actualiza el lugar seleccionado inmediatamente y fuerza el re-renderizado del Ítem."""
+    st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 if st.session_state.edit_index is not None:
     
-    # 1. Obtener los datos actuales de la fila
     index_to_edit = st.session_state.edit_index
     try:
         data_to_edit = st.session_state.atenciones_df.loc[index_to_edit]
     except KeyError:
         st.error("Error: El índice de la fila a editar no fue encontrado.")
         st.session_state.edit_index = None
+        st.session_state.edited_lugar_state = None
         st.rerun()
 
-    # 2. Iniciar el formulario modal
+    # Si el estado intermedio no está seteado (primera carga del modal), inicializarlo
+    if st.session_state.edited_lugar_state is None:
+        st.session_state.edited_lugar_state = data_to_edit['Lugar']
+
     with st.expander(f"📝 Editar Atención para {data_to_edit['Paciente']}", expanded=True):
         
-        # 3. Necesitamos el formulario, pero lo procesaremos de manera especial
         with st.form("edit_form", clear_on_submit=False):
             st.subheader("Modificar Datos de la Atención")
-
-            # --- Campos del formulario prellenados ---
             
             col_edit1, col_edit2 = st.columns(2)
 
             with col_edit1:
-                # La fecha debe ser un objeto date para el widget
                 edited_fecha = st.date_input("🗓️ Fecha de Atención", value=data_to_edit['Fecha'].date())
                 
-                # Para Lugar: Obtenemos el índice actual o 0 si falla
+                # --- WIDGET LUGAR CON CALLBACK ---
                 try:
-                    lugar_idx = LUGARES.index(data_to_edit['Lugar'])
+                    lugar_idx = LUGARES.index(st.session_state.edited_lugar_state)
                 except ValueError:
                     lugar_idx = 0
                     
-                # Usamos la clave para que Streamlit sepa que es el mismo widget en el formulario
-                edited_lugar = st.selectbox("📍 Lugar de Atención", options=LUGARES, index=lugar_idx, key="edit_lugar")
+                edited_lugar = st.selectbox(
+                    "📍 Lugar de Atención", 
+                    options=LUGARES, 
+                    index=lugar_idx, 
+                    key="edit_lugar", # Clave para el valor dentro del form
+                    on_change=update_edited_lugar # Llama a la función al cambiar
+                )
                 
-                # --- LÓGICA CORREGIDA PARA EL ÍTEM ---
+                # --- WIDGET ÍTEM DEPENDIENTE DEL ESTADO INTERMEDIO ---
                 
-                # 1. Obtener la lista de ítems basada en el lugar SELECCIONADO (edited_lugar)
-                items_edit = list(PRECIOS_BASE_CONFIG.get(edited_lugar, {}).keys())
+                # Usamos el lugar que está en el estado intermedio (edited_lugar_state)
+                items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
                 
-                # 2. Determinar el índice: Buscamos el ítem original del registro en la nueva lista de opciones.
+                # 1. Calcular el valor preseleccionado.
                 try:
-                    # Si el ítem original existe en la nueva lista de opciones, usamos ese índice
+                    # Si el ítem original existe en la nueva lista de opciones
                     current_item_index = items_edit.index(data_to_edit['Ítem'])
                 except ValueError:
-                    # Si el ítem original NO existe en la nueva lista (porque se cambió de lugar), 
-                    # el índice debe ser 0 para seleccionar el primer ítem de la lista del nuevo lugar.
+                    # Si el ítem original NO existe en la lista actual, seleccionamos el primero (índice 0)
                     current_item_index = 0
                 
-                # 3. Clave Dinámica para forzar el re-renderizado del Ítem cuando el Lugar cambia.
-                # Nota: Streamlit puede ser quisquilloso con las claves dinámicas dentro de st.form.
-                # Forzamos una clave simple que depende del lugar.
-                item_key = f"edit_item_for_{edited_lugar}_{data_to_edit['Ítem']}" 
+                # 2. Clave dinámica: DEBE depender del lugar que está en el estado intermedio.
+                item_key = f"edit_item_for_{st.session_state.edited_lugar_state}" 
 
                 edited_item = st.selectbox(
                     "📋 Ítem/Procedimiento", 
                     options=items_edit, 
                     index=current_item_index, 
-                    key=item_key # Usamos la clave dinámica
+                    key=item_key 
                 )
                 
-                # --- FIN DE LÓGICA CORREGIDA ---
+                # --- FIN DE DEPENDENCIA ---
                 
-                edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'])
+                edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'], key="edit_paciente")
                 
                 try:
                     pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
@@ -503,7 +521,8 @@ if st.session_state.edit_index is not None:
                     "💰 **Valor Bruto (Manual)**", 
                     min_value=0, 
                     value=int(data_to_edit['Valor Bruto']), 
-                    step=1000
+                    step=1000,
+                    key="edit_valor_bruto"
                 )
                 edited_desc_adicional_manual = st.number_input(
                     "✂️ **Descuento Adicional/Ajuste**", 
@@ -513,14 +532,15 @@ if st.session_state.edit_index is not None:
                     key="edit_desc_adic"
                 )
                 
-                # Recalcular el total líquido con los nuevos datos
+                # Recalcular el total líquido: USAMOS LOS VALORES DE LAS CLAVES DEL WIDGET (st.session_state.clave)
+                # NOTA: Usamos el valor del Ítem y Lugar que están en el estado, ya que son los que se muestran
                 recalculo = calcular_ingreso(
-                    edited_lugar, 
-                    edited_item, 
-                    edited_metodo_pago, 
-                    edited_desc_adicional_manual,
+                    st.session_state.edit_lugar, 
+                    st.session_state[item_key], # Usamos el valor del Ítem con la clave dinámica
+                    st.session_state.edit_metodo, 
+                    st.session_state.edit_desc_adic, 
                     fecha_atencion=edited_fecha, 
-                    valor_bruto_override=edited_valor_bruto
+                    valor_bruto_override=st.session_state.edit_valor_bruto 
                 )
                 
                 st.markdown("###")
@@ -533,26 +553,28 @@ if st.session_state.edit_index is not None:
 
             # Botón de Guardar
             if col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary"):
-                # 3. Guardar los cambios
+                # 3. Guardar los cambios (Usamos los valores finales del state)
                 st.session_state.atenciones_df.loc[index_to_edit] = {
                     "Fecha": edited_fecha.strftime('%Y-%m-%d'), 
-                    "Lugar": edited_lugar, 
-                    "Ítem": edited_item, 
-                    "Paciente": edited_paciente, 
-                    "Método Pago": edited_metodo_pago,
+                    "Lugar": st.session_state.edit_lugar, 
+                    "Ítem": st.session_state[item_key], # Valor final del ítem
+                    "Paciente": st.session_state.edit_paciente, 
+                    "Método Pago": st.session_state.edit_metodo,
                     "Valor Bruto": recalculo['valor_bruto'],
                     "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'],
                     "Desc. Tarjeta": recalculo['desc_tarjeta'],
-                    "Desc. Adicional": edited_desc_adicional_manual,
+                    "Desc. Adicional": st.session_state.edit_desc_adic,
                     "Total Recibido": recalculo['total_recibido']
                 }
                 
                 save_data(st.session_state.atenciones_df)
-                st.session_state.edit_index = None # Cerrar el modal
-                st.success(f"🎉 Atención para {edited_paciente} actualizada exitosamente. Recargando...")
+                st.session_state.edit_index = None 
+                st.session_state.edited_lugar_state = None 
+                st.success(f"🎉 Atención para {st.session_state.edit_paciente} actualizada exitosamente. Recargando...")
                 st.rerun()
                 
             # Botón de Cancelar
             if col_btn2.form_submit_button("❌ Cancelar Edición"):
-                st.session_state.edit_index = None # Cerrar el modal
+                st.session_state.edit_index = None 
+                st.session_state.edited_lugar_state = None 
                 st.rerun()
