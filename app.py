@@ -101,7 +101,7 @@ st.set_page_config(page_title="Control de Ingresos Fonoaudiología", layout="wid
 st.title("💸 Sistema Interactivo de Ingreso de Atenciones")
 st.markdown("---")
 
-# --- Herramientas de Mantenimiento (Mejora 5) ---
+# --- Herramientas de Mantenimiento (Limpiar Caché) ---
 if st.sidebar.button("🧹 Limpiar Caché y Recargar Datos", type="secondary"):
     st.cache_data.clear() 
     st.cache_resource.clear() 
@@ -196,7 +196,7 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                 st.balloons()
 
 # ===============================================
-# 4. DASHBOARD DE RESUMEN (CON FILTRO DE FECHAS)
+# 4. DASHBOARD DE RESUMEN (CON TODOS LOS FILTROS)
 # ===============================================
 st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
@@ -206,11 +206,52 @@ df = st.session_state.atenciones_df
 if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
 
+    # --- FILTROS DINÁMICOS EN LA BARRA LATERAL (Mejora 7) ---
+    st.sidebar.header("🔍 Filtros de Análisis")
+    
+    # Filtro por Lugar
+    lugares_disponibles = ['Todos'] + sorted(df['Lugar'].unique().tolist())
+    filtro_lugar = st.sidebar.selectbox(
+        "📍 Seleccionar Centro de Atención", 
+        options=lugares_disponibles
+    )
+    
+    # Filtro por Ítem (depende del Lugar si está seleccionado, si no, usa todos)
+    if filtro_lugar != 'Todos':
+        # Filtramos primero por lugar para ofrecer solo ítems relevantes
+        df_lugar = df[df['Lugar'] == filtro_lugar]
+        items_disponibles = ['Todos'] + sorted(df_lugar['Ítem'].unique().tolist())
+    else:
+        items_disponibles = ['Todos'] + sorted(df['Ítem'].unique().tolist())
+        
+    filtro_item = st.sidebar.selectbox(
+        "📋 Seleccionar Ítem/Procedimiento", 
+        options=items_disponibles
+    )
+    st.sidebar.markdown("---") 
+    
+    # ----------------------------------------------------
+    # APLICACIÓN DE FILTROS 1 Y 2 (Lugar e Ítem)
+    # ----------------------------------------------------
+    
+    # 1. Aplicar Filtro de Lugar
+    if filtro_lugar != 'Todos':
+        df = df[df['Lugar'] == filtro_lugar]
+        
+    # 2. Aplicar Filtro de Ítem
+    if filtro_item != 'Todos':
+        df = df[df['Ítem'] == filtro_item]
+    
     # ----------------------------------------------------
     # FILTRO POR RANGO DE FECHA (Mejora 6)
     # ----------------------------------------------------
     
-    # Calcular las fechas min/max disponibles
+    # Nota: min_date/max_date ahora se calculan sobre el DataFrame ya filtrado por Lugar/Ítem
+    # Esto asegura que el selector de fecha no muestre rangos vacíos si un filtro ya se aplicó.
+    if df.empty:
+        st.warning("No hay datos disponibles para la combinación de Lugar/Ítem seleccionada.")
+        st.stop()
+        
     min_date = df['Fecha'].min().date()
     max_date = df['Fecha'].max().date()
     
@@ -230,7 +271,7 @@ if not df.empty:
         max_value=max_date
     )
     
-    # Aplicar el filtro al DataFrame
+    # Aplicar el filtro final al DataFrame
     df_filtrado = df[
         (df['Fecha'].dt.date >= fecha_inicio) & 
         (df['Fecha'].dt.date <= fecha_fin)
@@ -238,10 +279,9 @@ if not df.empty:
     
     if df_filtrado.empty:
         st.warning("No hay datos registrados en el rango de fechas seleccionado.")
-        # Usamos st.stop() para detener la ejecución de Streamlit de forma segura (CORRECCIÓN DE ERROR)
         st.stop()
         
-    # Usamos el DataFrame filtrado para el resto de los cálculos
+    # Usamos el DataFrame doblemente filtrado para el resto de los cálculos
     df = df_filtrado
     
     # ----------------------------------------------------
@@ -283,6 +323,7 @@ if not df.empty:
     
     # Análisis Mensual
     st.subheader("📈 Evolución Mensual de Ingresos Líquidos")
+    # Nota: Si el filtro de Lugar/Ítem se aplica, la gráfica muestra la evolución SOLO de ese subconjunto
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
@@ -308,7 +349,7 @@ if not df.empty:
     
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="⬇️ Descargar Todos los Datos Registrados (CSV)",
+        label="⬇️ Descargar Datos Filtrados (CSV)",
         data=csv,
         file_name='reporte_control_ingresos_filtrado.csv',
         mime='text/csv',
