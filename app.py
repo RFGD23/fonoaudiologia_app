@@ -21,8 +21,7 @@ PRECIOS_BASE = {
 # --- Reglas de Descuento (Fijas por Lugar) ---
 DESCUENTOS_LUGAR = {
     'LIBEDUL': 0, 'ALERCE': 0, 'DOMICILIO': 0, 
-    # El valor de AMAR AUSTRAL y CPM debe ser confirmado, este es un valor estimado por liquidación.
-    'AMAR AUSTRAL': 5000, # Arriendo de box fijo.
+    # El valor de CPM debe ser confirmado, este es un valor estimado por liquidación.
     'CPM': 14610, # Esto refleja el 48.7% que queda líquido de los 30000.
 }
 
@@ -57,18 +56,38 @@ def save_data(df):
     """Guarda el DataFrame actualizado en el archivo CSV."""
     df.to_csv(DATA_FILE, index=False)
 
-def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, valor_bruto_override=None):
-    """Calcula el ingreso final líquido."""
+# Mapeo del día de la semana (Lunes es 0, Domingo es 6)
+# Martes (dayofweek=1) = 8000
+# Viernes (dayofweek=4) = 6500
+
+def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
+    """Calcula el ingreso final líquido basado en las reglas del negocio, incluyendo la lógica condicional por día."""
+    
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else PRECIOS_BASE.get((lugar, item), 0)
     
+    # 1. Descuento Fijo por Lugar (Base)
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
+    # 2. LÓGICA CONDICIONAL: AMAR AUSTRAL (Martes/Viernes)
+    if lugar == 'AMAR AUSTRAL':
+        # date.weekday() retorna 0 para Lunes y 6 para Domingo.
+        dia_semana = fecha_atencion.weekday() 
+        
+        if dia_semana == 1:  # Martes
+            desc_fijo_lugar = 8000
+        elif dia_semana == 4:  # Viernes
+            desc_fijo_lugar = 6500
+        # Si es otro día en AMAR AUSTRAL, el descuento sería 0, a menos que haya otra regla.
+        # Por ahora, se asume 0 si no es Martes ni Viernes.
+
+    # 3. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
     desc_tarjeta = valor_bruto * comision_pct
     
+    # 4. Cálculo final del total recibido (Líquido)
     total_recibido = (
         valor_bruto 
-        - desc_fijo_lugar 
+        - desc_fijo_lugar  # Ahora incluye el descuento condicional de AMAR
         - desc_tarjeta 
         - desc_adicional_manual
     )
@@ -127,17 +146,28 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
             help="Ingresa un valor positivo para descuentos o negativo para cargos."
         )
         
-        # Ejecutar el cálculo central en tiempo real
-        resultados = calcular_ingreso(
+            # Ejecutar el cálculo central en tiempo real
+            resultados = calcular_ingreso(
             lugar_seleccionado, 
             item_seleccionado, 
             metodo_pago, 
             desc_adicional_manual,
+            fecha_atencion=fecha,  # <--- SE AGREGA LA VARIABLE FECHA
             valor_bruto_override=valor_bruto_input
         )
         
         # Mostrar el resultado final
-        st.info(f"**Desc. Fijo Lugar:** ${resultados['desc_fijo_lugar']:,.0f}".replace(",", "."))
+        # Mostrar los resultados del cálculo (dentro de la interfaz de cálculo)
+        # ... otras métricas ...
+
+        desc_lugar_label = f"Descuento Fijo Lugar ({lugar_seleccionado})"
+        if lugar_seleccionado == 'AMAR AUSTRAL':
+            desc_lugar_label += f" ({fecha.strftime('%A')})" # Muestra el día de la semana
+    
+        st.metric(
+        label=desc_lugar_label, 
+        value=f"${resultados['desc_fijo_lugar']:,.0f}".replace(",", ".")
+        )
         st.warning(f"**Desc. Tarjeta ({COMISIONES_PAGO.get(metodo_pago, 0.00)*100:.0f}%):** ${resultados['desc_tarjeta']:,.0f}".replace(",", "."))
         
         st.markdown("###")
