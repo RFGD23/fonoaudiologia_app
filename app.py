@@ -62,7 +62,7 @@ def load_data_from_db():
 
         # 2. ORDENAR EL DATAFRAME USANDO PANDAS/PYTHON
         # Nota: Asegúrate de que el nombre de la columna aquí es el correcto: 'fecha'
-        df = df.sort_values(by="fecha", ascending=False)
+        df = df.sort_values(by="Fecha", ascending=False)
         
         return df
         
