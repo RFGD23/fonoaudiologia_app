@@ -3,13 +3,13 @@ import pandas as pd
 from datetime import date
 import os
 import io
-import plotly.express as px
+import plotly.express as px # Importar Plotly para el gráfico de torta
 
 # ===============================================
-# CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)8
+# CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
-# --- Bases de Datos Maestras (Extraídas de Control Ingresos.xlsx - Atenciones.csv) ---
+# --- Bases de Datos Maestras (Hardcodeado - PRÓXIMO PASO: JSON) ---
 PRECIOS_BASE = {
     ('LIBEDUL', 'PACIENTE'): 4500,('LIBEDUL', 'VISITA ESTABLECIMIENTO'): 20000,('LIBEDUL', 'ADOS2'): 30000, ('LIBEDUL', 'DUPLA'): 7000, 
     ('LIBEDUL', 'ADIR+ADOS2'): 37500, ('LIBEDUL', 'LAVADO OIDO'): 6000,
@@ -19,12 +19,10 @@ PRECIOS_BASE = {
     ('ALERCE', '5 SABADOS'): 25000, ('ALERCE', '4 SABADOS'): 31250,
 }
 # --- Reglas de Descuento (Fijas por Lugar) ---
-# NOTA: AMAR AUSTRAL fue eliminado de aquí porque su descuento es dinámico por día.
 DESCUENTOS_LUGAR = {
     'LIBEDUL': 0, 
     'ALERCE': 0, 
     'DOMICILIO': 0, 
-    # Valor fijo de ejemplo. Confirma la lógica real (si es % o fijo).
     'CPM': 14610, 
 }
 
@@ -44,17 +42,19 @@ DATA_FILE = 'atenciones_registradas.csv'
 # ===============================================
 # 2. FUNCIONES DE PERSISTENCIA Y CÁLCULO
 # ===============================================
+
 @st.cache_data
 def load_data():
-    """Carga los datos del archivo CSV o crea un DataFrame vacío si no existe."""
+    """
+    Carga los datos del archivo CSV de forma segura. 
+    Usa errors='coerce' para convertir a NaT cualquier valor de 'Fecha' 
+    que no sea válido, evitando el ValueError en la conversión.
+    """
     if os.path.exists(DATA_FILE):
-        # *** SOLUCIÓN: Agregamos el argumento errors='coerce' ***
-        # errors='coerce' convierte los valores no válidos de la columna 'Fecha' a NaT (Not a Time),
-        # lo que evita que el error detenga la aplicación, sin necesidad de parse_dates.
         df = pd.read_csv(DATA_FILE)
         
-        # Convertir a datetime de forma segura, reemplazando errores con NaT
-        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+        # Corrección de fecha con manejo de errores (Mejora 1)
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
         
         return df
     else:
@@ -78,16 +78,15 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     # 1. Descuento Fijo por Lugar (Base)
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
-    # LÓGICA CONDICIONAL SOLICITADA: AMAR AUSTRAL (Martes/Viernes)
+    # LÓGICA CONDICIONAL: AMAR AUSTRAL (Martes/Viernes)
     if lugar == 'AMAR AUSTRAL':
-        # date.weekday() retorna 0 para Lunes y 6 para Domingo.
         dia_semana = fecha_atencion.weekday() 
         
         if dia_semana == 1:  # Martes
             desc_fijo_lugar = 8000
         elif dia_semana == 4:  # Viernes
             desc_fijo_lugar = 6500
-        # Si es otro día, el descuento se mantiene en 0 (si no hay otra regla)
+        # Si es otro día, el descuento se mantiene en 0 (o el valor inicial)
 
     # 2. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
@@ -96,7 +95,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     # 3. Cálculo final del total recibido (Líquido)
     total_recibido = (
         valor_bruto 
-        - desc_fijo_lugar  # Incluye el descuento condicional de AMAR
+        - desc_fijo_lugar 
         - desc_tarjeta 
         - desc_adicional_manual
     )
@@ -161,7 +160,7 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
             item_seleccionado, 
             metodo_pago, 
             desc_adicional_manual,
-            fecha_atencion=fecha,  # <--- SE PASA LA FECHA PARA LA LÓGICA DE AMAR
+            fecha_atencion=fecha, 
             valor_bruto_override=valor_bruto_input
         )
         
@@ -171,7 +170,6 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
         desc_lugar_label = f"Desc. Fijo Lugar ({lugar_seleccionado})"
         # Muestra el día de la semana si es AMAR AUSTRAL para clarificar
         if lugar_seleccionado == 'AMAR AUSTRAL':
-            # Mapeo simple del día de la semana (solo para la visualización, Monday=Lunes, Tuesday=Martes...)
             dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
             desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
 
@@ -208,7 +206,7 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                 st.balloons()
 
 # ===============================================
-# 4. DASHBOARD DE RESUMEN
+# 4. DASHBOARD DE RESUMEN (CON MEJORAS)
 # ===============================================
 st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
@@ -216,44 +214,69 @@ st.header("📊 Resumen y Análisis de Ingresos")
 df = st.session_state.atenciones_df
 
 if not df.empty:
-    df['Fecha'] = pd.to_datetime(df['Fecha'])
+    # Asegura que la columna es datetime (solo por robustez, load_data ya lo hace)
+    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
+
+    # Función para formato de moneda (repetida por seguridad)
+    def format_currency(value):
+        return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+    # --- METRICAS PRINCIPALES (Mejora 3) ---
+    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     
-    # Métricas principales
     total_liquido_historico = df["Total Recibido"].sum()
-    st.metric("Total Líquido Histórico", f"${total_liquido_historico:,.0f}".replace(",", "."))
+    col_kpi1.metric("Total Líquido Histórico", format_currency(total_liquido_historico))
+    
+    total_bruto_historico = df["Valor Bruto"].sum()
+    col_kpi2.metric("Total Bruto Histórico", format_currency(total_bruto_historico))
+    
+    total_atenciones_historico = len(df)
+    col_kpi3.metric("Total de Atenciones", f"{total_atenciones_historico:,}".replace(",", "."))
+    
+    st.markdown("---")
+    st.subheader("Detalle de Descuentos y Comisiones")
+    
+    col_det1, col_det2 = st.columns(2)
+    
+    total_desc_tarjeta = df["Desc. Tarjeta"].sum()
+    col_det1.metric(
+        "💳 Total Comisiones de Tarjeta", 
+        format_currency(total_desc_tarjeta)
+    )
+    
+    total_desc_fijo_lugar = df["Desc. Fijo Lugar"].sum()
+    col_det2.metric(
+        "📍 Total Desc. Fijo Lugar (Base)", 
+        format_currency(total_desc_fijo_lugar)
+    )
+
+    st.markdown("---")
     
     # Análisis Mensual
+    st.subheader("📈 Evolución Mensual de Ingresos Líquidos")
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
-    # Mostrar Gráfico de Evolución Mensual
-    st.subheader("Evolución Mensual de Ingresos Líquidos")
-    # 
     st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#4c78a8")
 
- # Análisis por Lugar (Tipo Torta)
-    st.subheader("Distribución de Ingresos por Centro de Atención")
+    # Análisis por Lugar (Mejora 2 - Plotly)
+    st.subheader("🥧 Distribución de Ingresos por Centro de Atención")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
     
-    # *** NUEVO CÓDIGO PLOTLY EXPRESS ***
     fig_lugar = px.pie(
         resumen_lugar,
         values='Total Recibido',
         names='Lugar',
         title='Proporción de Ingresos Líquidos por Centro',
-        color_discrete_sequence=px.colors.sequential.RdBu # Opción de colores
+        color_discrete_sequence=px.colors.sequential.RdBu
     )
-    
-    # Ajustes de visualización
     fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
-    
-    # Mostrar el gráfico de forma nativa en Streamlit
     st.plotly_chart(fig_lugar, use_container_width=True)
 
-    # Opcional: Mostrar la tabla de datos debajo si es necesario
-    st.dataframe(resumen_lugar, use_container_width=True)
-
-    # Descarga de datos
+    # Vista previa y Descarga de datos
+    st.header("📋 Vista Previa de Datos Crudos")
+    st.dataframe(df, use_container_width=True)
+    
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="⬇️ Descargar Todos los Datos Registrados (CSV)",
