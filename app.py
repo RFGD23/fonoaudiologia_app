@@ -40,26 +40,48 @@ conn = st.connection(
 @st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # Consulta SQL: Se ejecuta sin ORDER BY para evitar el error inicial de PostgreSQL
+        # Consulta SQL correcta
         df = conn.query('SELECT * FROM public."atenciones";')
 
-        # ----------------------------------------------------------------------
-        # *** SOLUCIÓN FINAL AL ERROR DE 'fecha' (KeyError) ***
-        # 1. str.strip(): Elimina espacios en blanco o caracteres invisibles.
-        # 2. str.lower(): Asegura que todo esté en minúsculas.
+        # Limpieza de nombres de columna
         df.columns = df.columns.str.strip().str.lower()
+        
+        # ----------------------------------------------------------------------
+        # *** ÚLTIMA COMPROBACIÓN Y CORRECCIÓN ***
         # ----------------------------------------------------------------------
         
-        # Ordenación segura con Pandas usando el nombre limpio 'fecha'
-        df = df.sort_values(by="fecha", ascending=False)
+        # 1. Comprobamos si la columna 'fecha' existe en el DataFrame limpio
+        if 'fecha' not in df.columns:
+            # Si 'fecha' no está, mostramos un error con las columnas REALES
+            columnas_reales = df.columns.tolist()
+            
+            # Buscamos el nombre más probable que contenga 'fecha'
+            nombre_fecha_encontrado = next((col for col in columnas_reales if 'fecha' in col), None)
+
+            if nombre_fecha_encontrado:
+                # Si encontramos algo que se parece a 'fecha', lo usamos
+                st.warning(f"La columna 'fecha' no se encontró. Usando el nombre más probable: '{nombre_fecha_encontrado}'")
+                columna_orden = nombre_fecha_encontrado
+                
+            else:
+                # Si no encontramos nada, usamos una columna por defecto para que la app no falle
+                st.error(f"¡Error Crítico! La columna de fecha no se encuentra. Columnas disponibles: {columnas_reales}")
+                # Usaremos la columna desc_adicional (que existe según la metadata) para ordenar y evitar el crash
+                columna_orden = 'desc_adicional' 
+        else:
+            columna_orden = 'fecha'
+
+        # 2. Ordenación y Conversión
+        df = df.sort_values(by=columna_orden, ascending=False)
         
-        # Convertir la columna de fecha a formato datetime
-        df['fecha'] = pd.to_datetime(df['fecha']) 
+        # Solo intentamos convertir a fecha si el nombre encontrado contiene 'fecha'
+        if 'fecha' in columna_orden:
+            df[columna_orden] = pd.to_datetime(df[columna_orden]) 
         
         return df
         
     except Exception as e:
-        # Mensaje de error simplificado si la corrección funciona
+        # Mensaje de error final
         st.error(f"Error al cargar datos de Supabase. Mensaje: {e}")
         return pd.DataFrame()
 
