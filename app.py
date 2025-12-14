@@ -163,7 +163,7 @@ def set_background(img_file):
     
     /* Aplicamos el fondo al contenedor principal de Streamlit (.main) */
     .main {{
-        background-image: url("data:{mime_type};base64,{bin_str}"); /* USAMOS EL TIPO MIME DETECTADO */
+        background-image: url("data:{mime_type};base64,{bin_str}");
         background-size: cover; 
         background-attachment: fixed !important; /* FONDO FIJO / PARALAJE */
         background-repeat: no-repeat;
@@ -216,7 +216,7 @@ def set_background(img_file):
 # ===============================================
 
 # ➡️ EJECUTAR LA FUNCIÓN DE FONDO AQUÍ:
-set_background('fondo_magico.jpg') # <--- LLAMADA A LA IMAGEN EN FORMATO JPG
+set_background('fondo_magico.png') # <--- ¡AJUSTE FINAL: SE BUSCA 'fondo_magico.png'!
 
 # 🚀 Configuración de la Página y Título
 st.set_page_config(page_title="🏰 Control de Ingresos Mágicos 🪄", layout="wide")
