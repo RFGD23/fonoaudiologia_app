@@ -15,23 +15,23 @@ st.set_page_config(
 # 2. FUNCIONES DE PERSISTENCIA (CONEXIÓN Y CARGA)
 # ===============================================
 
-# Conexión Directa a PostgreSQL (sin Pooler)
+# ¡CONEXIÓN DIRECTA ESTABILIZADA!
+# Esto evita el Pooler (PGBouncer) y usa las credenciales estándar.
 conn = st.connection(
     "supabase_direct",  
     type="sql",
     dialect="postgresql",
-    # HOST DIRECTO
-    host="db.emnqztaxybhbmkuryhem.supabase.co", 
+    # *** CAMBIO CLAVE 1: HOST SIN 'db.' (Versión más compatible) ***
+    host="emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
     database="postgres",
-    # *** USAR EL NOMBRE DE USUARIO COMPLETO SIN EL PUNTO (EMERGENCIAS) ***
-    username="postgres_emnqztaxybhbmkuryhem", 
+    # *** CAMBIO CLAVE 2: USERNAME SIMPLE 'postgres' ***
+    username="postgres", 
     password="DomiLeo1702" 
 )
 
 @st.cache_data(ttl=3600)
-# ... el resto de la función es el código robusto que ya tenemos ...
-
+# ... el resto de la función load_data_from_db() y el dashboard se mantienen ...
 
 @st.cache_data(ttl=3600)
 def load_data_from_db():
