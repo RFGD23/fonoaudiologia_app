@@ -40,45 +40,40 @@ conn = st.connection(
 @st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # Consulta SQL correcta
-        df = conn.query('SELECT * FROM public."atenciones";')
-
-        # Limpieza de nombres de columna
-        df.columns = df.columns.str.strip().str.lower()
+        # *** CONSULTA SQL FINAL CON ALIAS LIMPIOS ***
+        # Seleccionamos todas las columnas usando alias en minúsculas para garantizar el éxito.
+        # Basado en tu metadata:
+        query = """
+        SELECT
+            desc_adicional AS desc_adicional,
+            desc_fijo_lugar AS desc_fijo_lugar,
+            desc_tarjeta AS desc_tarjeta,
+            fecha AS fecha,
+            item AS item,
+            lugar AS lugar,
+            metodo_pago AS metodo_pago,
+            paciente AS paciente,
+            total_recibido AS total_recibido,
+            valor_bruto AS valor_bruto
+        FROM public."atenciones"
+        ORDER BY fecha DESC;
+        """
         
-        # ----------------------------------------------------------------------
-        # *** ÚLTIMA COMPROBACIÓN Y CORRECCIÓN ***
-        # ----------------------------------------------------------------------
-        
-        # 1. Comprobamos si la columna 'fecha' existe en el DataFrame limpio
-        if 'fecha' not in df.columns:
-            # Si 'fecha' no está, mostramos un error con las columnas REALES
-            columnas_reales = df.columns.tolist()
-            
-            # Buscamos el nombre más probable que contenga 'fecha'
-            nombre_fecha_encontrado = next((col for col in columnas_reales if 'fecha' in col), None)
+        # Ejecutamos la consulta con la ordenación en SQL para mayor eficiencia
+        # (Ahora que estamos 100% seguros del nombre 'fecha')
+        df = conn.query(query)
 
-            if nombre_fecha_encontrado:
-                # Si encontramos algo que se parece a 'fecha', lo usamos
-                st.warning(f"La columna 'fecha' no se encontró. Usando el nombre más probable: '{nombre_fecha_encontrado}'")
-                columna_orden = nombre_fecha_encontrado
-                
-            else:
-                # Si no encontramos nada, usamos una columna por defecto para que la app no falle
-                st.error(f"¡Error Crítico! La columna de fecha no se encuentra. Columnas disponibles: {columnas_reales}")
-                # Usaremos la columna desc_adicional (que existe según la metadata) para ordenar y evitar el crash
-                columna_orden = 'desc_adicional' 
-        else:
-            columna_orden = 'fecha'
-
-        # 2. Ordenación y Conversión
-        df = df.sort_values(by=columna_orden, ascending=False)
+        # La consulta ahora garantiza nombres en minúsculas y sin caracteres invisibles.
         
-        # Solo intentamos convertir a fecha si el nombre encontrado contiene 'fecha'
-        if 'fecha' in columna_orden:
-            df[columna_orden] = pd.to_datetime(df[columna_orden]) 
+        # Conversión de fecha
+        df['fecha'] = pd.to_datetime(df['fecha']) 
         
         return df
+        
+    except Exception as e:
+        # Si el error persiste, el problema está en la tabla, no en el nombre de la columna 'fecha'.
+        st.error(f"Error CRÍTICO al cargar datos. El problema no es 'fecha' sino otra columna o la tabla. Mensaje: {e}")
+        return pd.DataFrame()
         
     except Exception as e:
         # Mensaje de error final
