@@ -47,10 +47,15 @@ DATA_FILE = 'atenciones_registradas.csv'
 def load_data():
     """Carga los datos del archivo CSV o crea un DataFrame vacío si no existe."""
     if os.path.exists(DATA_FILE):
-        # *** MODIFICACIÓN CLAVE: Agregamos parse_dates=['Fecha'] ***
-        # Esto asegura que la columna 'Fecha' sea tratada como un objeto datetime
-        # inmediatamente al cargar el archivo, evitando errores de tipo en el dashboard.
-        return pd.read_csv(DATA_FILE, parse_dates=['Fecha'])
+        # *** SOLUCIÓN: Agregamos el argumento errors='coerce' ***
+        # errors='coerce' convierte los valores no válidos de la columna 'Fecha' a NaT (Not a Time),
+        # lo que evita que el error detenga la aplicación, sin necesidad de parse_dates.
+        df = pd.read_csv(DATA_FILE)
+        
+        # Convertir a datetime de forma segura, reemplazando errores con NaT
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+        
+        return df
     else:
         return pd.DataFrame(columns=[
             "Fecha", "Lugar", "Ítem", "Paciente", "Método Pago", 
