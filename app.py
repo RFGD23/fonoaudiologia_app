@@ -53,19 +53,22 @@ conn = st.connection(
     # CONTRASEÑA REAL:
     password="DomiLeo1702" # Asegúrate de que esta sea correcta
 )
-@st.cache_data(ttl=3600) # Carga los datos y los guarda en caché por 1 hora
+# @st.cache_data(ttl=3600) # Si usas caché, úsala.
+
 def load_data_from_db():
-    """Carga todos los datos de la tabla 'atenciones'."""
     try:
-        df = conn.query('SELECT * FROM public."atenciones" ORDER BY fecha DESC;', ttl=600)
-        # Asegura que las columnas numéricas sean float para los cálculos
-        cols_to_numeric = ["valor_bruto", "desc_fijo_lugar", "desc_tarjeta", "desc_adicional", "total_recibido"]
-        for col in cols_to_numeric:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        # 1. EJECUTAR LA CONSULTA SIN LA CLÁUSULA ORDER BY
+        df = conn.query('SELECT * FROM public."atenciones";')
+
+        # 2. ORDENAR EL DATAFRAME USANDO PANDAS/PYTHON
+        # Nota: Asegúrate de que el nombre de la columna aquí es el correcto: 'fecha'
+        df = df.sort_values(by="fecha", ascending=False)
+        
         return df
+        
     except Exception as e:
         st.error(f"Error al cargar datos de Supabase. Revisa la tabla y las credenciales. Error: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame() # Devuelve un DataFrame vacío en caso de error
 
 def save_data_to_db(nueva_atencion):
     """Inserta una nueva fila en la tabla 'atenciones'."""
