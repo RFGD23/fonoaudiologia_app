@@ -43,12 +43,14 @@ DATA_FILE = 'atenciones_registradas.csv'
 # ===============================================
 # 2. FUNCIONES DE PERSISTENCIA Y CÁLCULO
 # ===============================================
-
 @st.cache_data
 def load_data():
     """Carga los datos del archivo CSV o crea un DataFrame vacío si no existe."""
     if os.path.exists(DATA_FILE):
-        return pd.read_csv(DATA_FILE)
+        # *** MODIFICACIÓN CLAVE: Agregamos parse_dates=['Fecha'] ***
+        # Esto asegura que la columna 'Fecha' sea tratada como un objeto datetime
+        # inmediatamente al cargar el archivo, evitando errores de tipo en el dashboard.
+        return pd.read_csv(DATA_FILE, parse_dates=['Fecha'])
     else:
         return pd.DataFrame(columns=[
             "Fecha", "Lugar", "Ítem", "Paciente", "Método Pago", 
