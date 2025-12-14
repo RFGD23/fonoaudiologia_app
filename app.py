@@ -24,7 +24,7 @@ conn = st.connection(
     # *** CAMBIO CLAVE 1: HOST sin prefijo 'db.' ***
     host="emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
-    database="atenciones",
+    database="postgres",
     # *** CAMBIO CLAVE 2: USERNAME SIMPLE 'postgres' ***
     username="postgres", 
     # El password parece tener mayúscula, se mantiene como está si es correcta
