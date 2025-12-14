@@ -39,16 +39,17 @@ METODOS_PAGO = list(COMISIONES_PAGO.keys())
 # 2. FUNCIONES DE PERSISTENCIA (AÑADIDO PARA SUPABASE)
 # ===============================================
 
-# TEMPORALMENTE: Se usa la conexión directa para saltarse el error de secrets.toml
+# Reemplaza la línea conn = st.connection("supabase", type="sql") con esto:
 conn = st.connection(
-    "supabase_direct", 
+    "supabase", 
     type="sql",
+    # Descompón la URI en sus partes
     dialect="postgresql",
-    host="db.emnqztaxybhbmkuryhem.supabase.co", # <--- TU HOST REAL
+    host="db.emnqztaxybhbmkuryhem.supabase.co", 
     port=5432,
     database="postgres",
     username="postgres",
-    password="DomiLeo1702" # <--- TU CONTRASEÑA SIMPLE
+    password="DomiLeo1702" # Usa la contraseña directamente
 )
 
 @st.cache_data(ttl=3600) # Carga los datos y los guarda en caché por 1 hora
