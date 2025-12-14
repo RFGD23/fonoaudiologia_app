@@ -53,18 +53,35 @@ conn = st.connection(
     # CONTRASEÑA REAL:
     password="DomiLeo1702" # Asegúrate de que esta sea correcta
 )
-# @st.cache_data(ttl=3600) # Si usas caché, úsala.
-
+@st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # 1. EJECUTAR LA CONSULTA SIN LA CLÁUSULA ORDER BY
+        # Consulta SQL sin ORDER BY para evitar el error de columna en el motor
         df = conn.query('SELECT * FROM public."atenciones";')
 
-        # 2. ORDENAR EL DATAFRAME USANDO PANDAS/PYTHON
-        # Nota: Asegúrate de que el nombre de la columna aquí es el correcto: 'fecha'
-        df = df.sort_values(by="Fecha", ascending=False)
+        # *** ¡SOLUCIÓN A LA CAPITALIZACIÓN OCULTA! ***
+        # Convertir todos los nombres de columna a minúsculas ANTES de ordenar.
+        df.columns = df.columns.str.lower()
+        
+        # Ahora ordenamos de forma segura usando el nombre en minúsculas
+        df = df.sort_values(by="fecha", ascending=False)
+        
+        # Convertir la columna de fecha a formato datetime
+        df['fecha'] = pd.to_datetime(df['fecha']) 
         
         return df
+        
+    except Exception as e:
+        # Devuelve un mensaje de error detallado, incluyendo los nombres de columna 
+        # para una última comprobación de depuración.
+        try:
+            # Intentar obtener los nombres de columna para depuración, si el error no es demasiado temprano
+            col_names = df.columns.tolist()
+            st.error(f"Error al cargar datos. Mensaje: {e}. Columnas recibidas: {col_names}")
+        except:
+            st.error(f"Error al cargar datos de Supabase. Mensaje de error: {e}. No se pudo inspeccionar el DataFrame.")
+            
+        return pd.DataFrame()
         
     except Exception as e:
         st.error(f"Error al cargar datos de Supabase. Revisa la tabla y las credenciales. Error: {e}")
