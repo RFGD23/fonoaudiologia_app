@@ -210,7 +210,65 @@ st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
 
 df = st.session_state.atenciones_df
+# ===============================================
+# 4. DASHBOARD DE RESUMEN (CON MEJORAS Y FILTRO)
+# ===============================================
+st.markdown("---")
+st.header("📊 Resumen y Análisis de Ingresos")
 
+df = st.session_state.atenciones_df
+
+if not df.empty:
+    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+    
+    # ----------------------------------------------------
+    # FILTRO POR RANGO DE FECHA (NUEVA IMPLEMENTACIÓN)
+    # ----------------------------------------------------
+    
+    min_date = df['Fecha'].min().date()
+    max_date = df['Fecha'].max().date()
+    
+    st.subheader("Filtro de Periodo")
+    col_start, col_end = st.columns(2)
+    
+    fecha_inicio = col_start.date_input(
+        "📅 Fecha de Inicio", 
+        min_date, 
+        min_value=min_date, 
+        max_value=max_date
+    )
+    fecha_fin = col_end.date_input(
+        "📅 Fecha de Fin", 
+        max_date, 
+        min_value=min_date, 
+        max_value=max_date
+    )
+    
+    # Aplicar el filtro al DataFrame
+    df_filtrado = df[
+        (df['Fecha'].dt.date >= fecha_inicio) & 
+        (df['Fecha'].dt.date <= fecha_fin)
+    ]
+    
+    if df_filtrado.empty:
+        st.warning("No hay datos registrados en el rango de fechas seleccionado.")
+        # Salir del bloque para no intentar calcular métricas con DataFrame vacío
+        return 
+
+    # A partir de aquí, usamos df_filtrado en lugar de df
+    df = df_filtrado
+
+    # ----------------------------------------------------
+    # MÉTRICAS PRINCIPALES (KPIs) (APLICADAS A df_filtrado)
+    # ----------------------------------------------------
+    
+    def format_currency(value):
+        return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+    
+    # ... (El resto del código de las métricas, gráficos y tablas sigue abajo, 
+    # pero ahora usando el DataFrame 'df' que contiene los datos filtrados)
 if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
 
