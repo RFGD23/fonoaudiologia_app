@@ -113,20 +113,21 @@ def update_edited_lugar():
     """Actualiza el lugar seleccionado inmediatamente."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
-# ❌ ELIMINAMOS get_base64_of_file y set_background
-
 # --- FUNCIONES PARA FONDO SÓLIDO (BLANCO) ---
 def set_solid_white_theme():
     """Establece un fondo blanco puro y ajusta la apariencia de los contenedores."""
-    # Nota: El tema principal ya está en "light" en st.set_page_config
-
     solid_white_css = '''
     <style>
     /* 1. Fondo Blanco Puro en el Contenedor Raíz */
+    /* Forzar modo claro a nivel de navegador para mejor compatibilidad */
+    :root {
+        color-scheme: light !important; 
+    }
+    
     /* stApp: Contenedor principal de Streamlit */
     .stApp, [data-testid="stAppViewBlock"], .main {
         background-color: #FFFFFF !important; /* Blanco puro */
-        background-image: none !important; /* Elimina cualquier rastro del fondo de imagen anterior */
+        background-image: none !important; 
     }
     
     /* 2. Barra Lateral (Sidebar) - Fondo Claro */
@@ -136,7 +137,6 @@ def set_solid_white_theme():
     }
 
     /* 3. Bloques de Contenido (Forms, Expander, Metrics) */
-    /* Hacemos los contenedores ligeramente más oscuros para que resalten sobre el blanco */
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
     .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child { 
@@ -151,7 +151,7 @@ def set_solid_white_theme():
     }
     
     /* 5. Asegurar que el texto sea oscuro sobre el fondo claro */
-    h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] * { /* Aplicamos color oscuro a todos los textos */
+    h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] *, [data-testid="stHeader"] * { 
         color: #333333 !important;
     }
 
@@ -170,11 +170,10 @@ def set_solid_white_theme():
 # ===============================================
 
 # 🚀 Configuración de la Página y Título
+# ❌ CORRECCIÓN: Eliminado theme="light" para evitar TypeError en versiones antiguas.
 st.set_page_config(
     page_title="🏰 Control de Ingresos Mágicos 🪄", 
-    layout="wide",
-    # ➡️ CONFIGURACIÓN A TEMA CLARO
-    theme="light" 
+    layout="wide"
 )
 
 # ➡️ EJECUTAR LA FUNCIÓN DEL TEMA CLARO AQUÍ:
@@ -679,3 +678,4 @@ if st.session_state.edit_index is not None:
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
                 st.rerun()
+            
