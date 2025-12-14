@@ -56,20 +56,25 @@ conn = st.connection(
 @st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # Consulta SQL sin ORDER BY para evitar el error de columna en el motor
+        # *** ¡CONSULTA CORRECTA Y LIMPIA! ***
+        # Asegúrate de que esta línea esté en tu archivo app.py
         df = conn.query('SELECT * FROM public."atenciones";')
 
-        # *** ¡SOLUCIÓN A LA CAPITALIZACIÓN OCULTA! ***
-        # Convertir todos los nombres de columna a minúsculas ANTES de ordenar.
+        # Convertir todos los nombres de columna a minúsculas para evitar KeyErrors
         df.columns = df.columns.str.lower()
         
-        # Ahora ordenamos de forma segura usando el nombre en minúsculas
+        # Ordenación segura con Pandas usando 'fecha' (ya en minúsculas)
         df = df.sort_values(by="fecha", ascending=False)
         
         # Convertir la columna de fecha a formato datetime
         df['fecha'] = pd.to_datetime(df['fecha']) 
         
         return df
+        
+    except Exception as e:
+        # Manejo de error limpio
+        st.error(f"Error al cargar datos de Supabase. Mensaje: {e}")
+        return pd.DataFrame()
         
     except Exception as e:
         # Devuelve un mensaje de error detallado, incluyendo los nombres de columna 
