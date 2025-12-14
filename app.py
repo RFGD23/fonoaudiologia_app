@@ -35,7 +35,7 @@ def load_config(filename):
             return data
             
     except FileNotFoundError:
-        # st.warning(f"Archivo de configuración '{filename}' no encontrado. Creando uno por defecto.")
+        st.info(f"Archivo de configuración '{filename}' no encontrado. Creando uno por defecto.")
         
         # --- Configuración por defecto para inicialización ---
         if filename == PRECIOS_FILE:
@@ -46,7 +46,7 @@ def load_config(filename):
         elif filename == DESCUENTOS_FILE:
             default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
         elif filename == COMISIONES_FILE:
-            default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
+            default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03, 'AMAR AUSTRAL': 0.00}
         elif filename == REGLAS_FILE:
             default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}}
         else:
@@ -56,7 +56,7 @@ def load_config(filename):
         return default_data
     
     except json.JSONDecodeError as e:
-        st.error(f"Error: El archivo {filename} tiene un formato JSON inválido. Revisa su contenido. Error: {e}")
+        st.error(f"Error: El archivo {filename} tiene un formato JSON inválido. Revisa su contenido. Detalle: {e}")
         return {} 
 
 # --- Cargar Variables Globales desde JSON ---
@@ -118,9 +118,15 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
     # --- LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo) ---
-    desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
-    if lugar in DESCUENTOS_REGLAS:
+    # 1. Obtener el descuento fijo base (Tributo)
+    lugar_upper = lugar.upper()
+    desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
+    
+    # 2. Revisar si existe una regla especial para el día
+    if lugar_upper in DESCUENTOS_REGLAS:
+        
+        # Asegurar que fecha_atencion sea un objeto date o Timestamp para obtener el día
         if isinstance(fecha_atencion, pd.Timestamp):
             dia_semana_num = fecha_atencion.weekday()
         elif isinstance(fecha_atencion, date):
@@ -128,14 +134,16 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         else:
             dia_semana_num = date.today().weekday()
             
-        dia_nombre = DIAS_SEMANA[dia_semana_num].upper()
+        dia_nombre = DIAS_SEMANA[dia_semana_num].upper() # Obtener el nombre del día en mayúsculas
         
-        regla_especial = DESCUENTOS_REGLAS[lugar].get(dia_nombre)
+        regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
+        
+        # 3. Si la regla especial existe, sobrescribe el descuento base
         if regla_especial is not None:
             desc_fijo_lugar = regla_especial 
 
     # Aplicar Comisión de Tarjeta
-    comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
+    comision_pct = COMISIONES_PAGO.get(metodo_pago.upper(), 0.00) 
     desc_tarjeta = valor_bruto * comision_pct
     
     # Cálculo final
@@ -282,7 +290,6 @@ with tab_registro:
     
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' para agregar datos iniciales.")
-        # Se detiene la ejecución del formulario si no hay bases.
         st.stop()
     
     # 1. Definir valores iniciales para los Selectboxes y Number Inputs
@@ -344,7 +351,7 @@ with tab_registro:
                      index=item_index, 
                      on_change=update_price_from_item_or_lugar) 
     
-    # 3. VALOR BRUTO (CORREGIDO: Elimina 'value=' para evitar advertencia)
+    # 3. VALOR BRUTO (CORREGIDO: Solo usa key para evitar la advertencia)
     with col_reactivo_3:
         st.number_input(
             "💰 **Valor Bruto (Recompensa)**", 
@@ -401,13 +408,25 @@ with tab_registro:
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
+                # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO ---
+                current_lugar_upper = st.session_state.form_lugar.upper()
+                current_day_name = DIAS_SEMANA[st.session_state.form_fecha_form.weekday()]
                 desc_lugar_label = f"Tributo al Castillo ({st.session_state.form_lugar})"
-                if st.session_state.form_lugar.upper() in DESCUENTOS_REGLAS:
-                    dias_semana = {0: 'LUNES', 1: 'MARTES', 2: 'MIÉRCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SÁBADO', 6: 'DOMINGO'}
-                    dia_atencion = dias_semana.get(st.session_state.form_fecha_form.weekday(), "DÍA") 
-                    desc_lugar_label += f" ({dia_atencion})" 
+                
+                is_rule_applied = False
+                if current_lugar_upper in DESCUENTOS_REGLAS:
+                     # Comprobar si hay una regla específica para el día actual en este lugar
+                     if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
+                         desc_lugar_label += f" (Regla: {current_day_name})"
+                         is_rule_applied = True
 
-                st.info(f"**Tributo al Castillo ({st.session_state.form_lugar}):** {format_currency(resultados['desc_fijo_lugar'])}")
+                # Si no se aplicó regla especial, y el descuento base es mayor a cero, indicar que es el base.
+                if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
+                     desc_lugar_label += " (Base)"
+                
+                # Muestra el resultado de la función de cálculo
+                st.info(f"**{desc_lugar_label}:** {format_currency(resultados['desc_fijo_lugar'])}")
+                # --- FIN DE LÓGICA CORREGIDA ---
                 
                 st.markdown("###")
                 st.success(
@@ -808,7 +827,7 @@ with tab_dashboard:
             
             with col_edit2_out: 
                 
-                # VALOR BRUTO DE EDICIÓN (CORREGIDO: Elimina 'value=')
+                # VALOR BRUTO DE EDICIÓN (CORREGIDO: Solo usa key)
                 edited_valor_bruto = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
@@ -836,7 +855,23 @@ with tab_dashboard:
                 )
                 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** {format_currency(resultados_edit['desc_tarjeta'])}")
-                st.info(f"**Tributo al Castillo ({st.session_state.edit_lugar}):** {format_currency(resultados_edit['desc_fijo_lugar'])}")
+                
+                # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO EN EDICIÓN ---
+                current_lugar_upper = st.session_state.edit_lugar.upper()
+                current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
+                desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
+                
+                is_rule_applied = False
+                if current_lugar_upper in DESCUENTOS_REGLAS:
+                     if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
+                         desc_lugar_label += f" (Regla: {current_day_name})"
+                         is_rule_applied = True
+
+                if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
+                     desc_lugar_label += " (Base)"
+                
+                st.info(f"**{desc_lugar_label}:** {format_currency(resultados_edit['desc_fijo_lugar'])}")
+                # --- FIN DE LÓGICA CORREGIDA ---
                 
                 st.markdown("###")
                 st.success(
