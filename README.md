@@ -1,30 +1,58 @@
 # 💸 Sistema Interactivo de Control de Ingresos Fonoaudiología
 
-Este proyecto es una aplicación web interactiva desarrollada con Streamlit y persistencia local (CSV) para el registro y análisis de atenciones fonoaudiológicas, aplicando reglas de negocio complejas (precios base, descuentos condicionales y comisiones) de manera automática.
+Este proyecto es una aplicación web interactiva desarrollada con Streamlit y persistencia local (CSV) para el registro y análisis de atenciones fonoaudiológicas. Calcula automáticamente los ingresos netos aplicando reglas de negocio complejas (precios base, descuentos condicionales y comisiones).
 
 ## 🚀 Características Principales
 
 * **Registro en Tiempo Real:** Interfaz simple para ingresar atenciones y pacientes.
-* **Cálculo Automático:** Calcula el valor final **Líquido** automáticamente, aplicando descuentos por centro y comisiones por método de pago.
-* **Análisis Detallado:** Dashboard con KPIs clave, evolución mensual de ingresos y distribución por centro de atención (Gráfico de Torta).
+* **Cálculo Automático:** Calcula el valor final **Líquido** automáticamente.
+* **Análisis Multidimensional:** Dashboard con filtros interactivos por **Rango de Fecha, Centro de Atención** e **Ítem/Procedimiento**.
+* **KPIs Detallados:** Muestra el Total Bruto, Total Líquido, Comisiones Pagadas y Descuentos Fijos Aplicados.
 * **Mantenibilidad Modular:** Todas las reglas de negocio (precios y descuentos) se gestionan a través de archivos JSON, sin necesidad de modificar el código Python.
 
 ## ⚙️ Estructura del Proyecto
 
-El proyecto está organizado de forma modular:
+El proyecto está organizado de forma modular. Para su funcionamiento, es esencial contar con estos archivos en la raíz del repositorio:
 
 * `app.py`: El código principal de la aplicación Streamlit y la lógica de cálculo.
-* `atenciones_registradas.csv`: Base de datos donde se guardan todas las atenciones registradas. **(Este archivo se genera automáticamente.)**
+* `atenciones_registradas.csv`: Base de datos donde se guardan todas las atenciones registradas.
 * `requirements.txt`: Lista de dependencias de Python (`streamlit`, `pandas`, `plotly`).
 * **Archivos de Configuración (JSON):** Contienen las reglas de negocio editables.
 
+## 🏃‍♀️ Cómo Ejecutar la Aplicación Localmente
+
+1.  **Clonar el Repositorio:**
+    ```bash
+    git clone [ENLACE_A_SU_REPOSITORIO]
+    cd fonoaudiologia_app
+    ```
+
+2.  **Instalar Dependencias:** Asegúrese de tener Python instalado y luego ejecute:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3.  **Ejecutar Streamlit:**
+    ```bash
+    streamlit run app.py
+    ```
+
+## 📊 Guía de Uso del Dashboard
+
+La sección de **Resumen y Análisis de Ingresos** ahora permite un análisis profundo mediante filtros combinables:
+
+1.  **Filtros Dinámicos (Barra Lateral):** Use los selectores de **Centro de Atención** e **Ítem/Procedimiento** en la barra lateral izquierda para acotar los datos.
+2.  **Filtro de Periodo (Cuerpo Principal):** Use los campos **Fecha de Inicio** y **Fecha de Fin** para limitar el análisis a un rango temporal específico.
+
+**Nota:** Si los datos no se actualizan después de modificar los archivos JSON o CSV, use el botón **"🧹 Limpiar Caché y Recargar Datos"** en la barra lateral.
+
 ## 🛠️ Cómo Actualizar las Reglas de Negocio
 
-La gran ventaja de este sistema es que **no necesita tocar `app.py`** para cambiar precios o descuentos. Simplemente edite los archivos JSON:
+La configuración se encuentra en los archivos JSON:
 
 ### 1. `precios_base.json` (Precios Brutos por Lugar e Ítem)
 
-Para cambiar el precio, modifique el valor asociado al par `Lugar` y `Ítem`:
+Modifique la estructura anidada `Lugar` -> `Ítem` -> `Precio` para cambiar los valores:
 
 ```json
 {
@@ -34,7 +62,6 @@ Para cambiar el precio, modifique el valor asociado al par `Lugar` y `Ítem`:
   },
   "AMAR AUSTRAL": {
     "PACIENTE": 30000
-    //...
   }
 }
 
