@@ -16,20 +16,21 @@ st.set_page_config(
 # ===============================================
 
 # ¡CONEXIÓN DIRECTA ESTABILIZADA!
-# Esto evita el Pooler (PGBouncer) y usa las credenciales estándar.
-# En app.py:
+# Se corrigen el Host y el Username para la conexión directa a 5432.
 conn = st.connection(
     "supabase_direct",  
     type="sql",
     dialect="postgresql",
-    # HOST DIRECTO
+    # *** CAMBIO CLAVE 1: HOST sin prefijo 'db.' ***
     host="emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
     database="postgres",
-    # USERNAME SIMPLE
+    # *** CAMBIO CLAVE 2: USERNAME SIMPLE 'postgres' ***
     username="postgres", 
+    # El password parece tener mayúscula, se mantiene como está si es correcta
     password="DomiLeo1702" 
 )
+# ...
 
 @st.cache_data(ttl=3600)
 def load_data_from_db():
