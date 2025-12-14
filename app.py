@@ -30,8 +30,7 @@ conn = st.connection(
     password="Domileo1702" 
 )
 
-@st.cache_data(ttl=3600)
-# ... El resto de la función load_data_from_db() y el dashboard se mantienen ...
+
 @st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
