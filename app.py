@@ -21,7 +21,7 @@ conn = st.connection(
     type="sql",
     dialect="postgresql",
     # HOST DIRECTO
-    host="emnqztaxybhbmkuryhem.supabase.co", 
+    host="db.emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
     database="postgres",
     # *** USAR EL NOMBRE DE USUARIO COMPLETO SIN EL PUNTO (EMERGENCIAS) ***
