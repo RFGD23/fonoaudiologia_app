@@ -218,7 +218,7 @@ st.header("📊 Resumen y Análisis de Ingresos")
 
 df = st.session_state.atenciones_df
 
-if not df.empty:
+    if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     
     # ----------------------------------------------------
@@ -269,7 +269,7 @@ if not df.empty:
     
     # ... (El resto del código de las métricas, gráficos y tablas sigue abajo, 
     # pero ahora usando el DataFrame 'df' que contiene los datos filtrados)
-if not df.empty:
+    if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
 
     def format_currency(value):
