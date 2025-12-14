@@ -5,7 +5,7 @@ import os
 import json 
 import time 
 import base64 
-import plotly.express as px # Importación de Plotly Express
+import plotly.express as px
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -25,7 +25,6 @@ def load_config(filename):
 
 # --- Cargar Variables Globales desde JSON ---
 try:
-    # Intenta cargar los archivos de configuración
     PRECIOS_BASE_CONFIG = load_config('precios_base.json')
     DESCUENTOS_LUGAR = load_config('descuentos_lugar.json')
     COMISIONES_PAGO = load_config('comisiones_pago.json')
@@ -36,7 +35,6 @@ except:
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
 
 
-# Variables de la aplicación (derivadas de la configuración)
 LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys()))
 METODOS_PAGO = list(COMISIONES_PAGO.keys())
 
@@ -111,16 +109,12 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
-# Función de Callback para actualizar el estado del lugar (Usada en la Sección 5)
 def update_edited_lugar():
-    """
-    Actualiza el lugar seleccionado inmediatamente (fuera del form)
-    para que la lista de Ítems se recalcule al instante.
-    """
+    """Actualiza el lugar seleccionado inmediatamente."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN AGRESIVA) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN FINAL: Altura y Cobertura) ---
 @st.cache_data
 def get_base64_of_file(bin_file):
     """Convierte un archivo binario (como una imagen) a Base64."""
@@ -136,10 +130,9 @@ def get_base64_of_file(bin_file):
         return ""
 
 def set_background(img_file):
-    """Establece la imagen de fondo usando CSS inyectado y transparencia AGRESIVA."""
+    """Establece la imagen de fondo con máxima cobertura y altura."""
     bin_str = get_base64_of_file(img_file)
     
-    # Determinar el tipo MIME según la extensión del archivo
     if img_file.lower().endswith('.jpg') or img_file.lower().endswith('.jpeg'):
         mime_type = "image/jpeg"
     else:
@@ -149,32 +142,29 @@ def set_background(img_file):
         return
 
     # *************************************************************************
-    # CSS INYECTADO: SOLUCIÓN MÁS AGRESIVA (Aplicando el fondo al BODY)
+    # CSS INYECTADO: SOLUCIÓN FINAL CON AJUSTE DE ALTURA
     # *************************************************************************
     page_bg_img = f'''
     <style>
-    /* 1. Aplicar el fondo al BODY (Elemento raíz de la página) */
+    /* 0. Habilitar Altura Completa en HTML y BODY */
+    html, body {{
+        height: 100% !important; 
+        min-height: 100vh !important;
+    }}
+
+    /* 1. Aplicar el fondo al BODY (Elemento raíz) */
     body {{
         background-image: url("data:{mime_type};base64,{bin_str}");
         background-size: cover; 
+        background-position: center; /* Aseguramos centrado */
         background-attachment: fixed !important; 
         background-repeat: no-repeat;
     }}
     
-    /* 2. Forzar la transparencia en todos los contenedores de Streamlit */
-    /* stApp: Contenedor principal */
-    .stApp {{
+    /* 2. Forzar la transparencia y altura completa en contenedores de Streamlit */
+    .stApp, .main, [data-testid="stAppViewBlock"] {{
         background-color: transparent !important; 
-    }}
-
-    /* main: Contenedor del contenido */
-    .main {{
-        background-color: transparent !important;
-    }}
-
-    /* stAppViewBlock: Contenedor intermedio */
-    [data-testid="stAppViewBlock"] {{
-        background-color: transparent !important; 
+        min-height: 100vh !important; /* Asegura que estos contenedores también cubran el 100% de la ventana */
     }}
 
     /* Contenido de la barra lateral (con transparencia parcial) */
