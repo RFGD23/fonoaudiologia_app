@@ -39,19 +39,17 @@ METODOS_PAGO = list(COMISIONES_PAGO.keys())
 # 2. FUNCIONES DE PERSISTENCIA (AÑADIDO PARA SUPABASE)
 # ===============================================
 
-# Reemplaza la línea conn = st.connection("supabase", type="sql") con esto:
+# CAMBIO CRÍTICO: Conexión directa para evitar problemas de lectura de secrets.toml
 conn = st.connection(
-    "supabase", 
+    "supabase_direct", 
     type="sql",
-    # Descompón la URI en sus partes
     dialect="postgresql",
     host="db.emnqztaxybhbmkuryhem.supabase.co", 
     port=5432,
     database="postgres",
     username="postgres",
-    password="DomiLeo1702" # Usa la contraseña directamente
+    password="Domileo1702" # <--- TU CONTRASEÑA MÁS RECIENTE
 )
-
 @st.cache_data(ttl=3600) # Carga los datos y los guarda en caché por 1 hora
 def load_data_from_db():
     """Carga todos los datos de la tabla 'atenciones'."""
