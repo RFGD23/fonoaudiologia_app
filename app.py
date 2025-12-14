@@ -5,7 +5,8 @@ import os
 import io
 import plotly.express as px 
 import json 
-import time # Importar time para la lógica del fallback de fecha
+import time 
+import base64 # Necesario para la función de fondo
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -19,10 +20,8 @@ def load_config(filename):
         with open(filename, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        # st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}.")
         return {} 
     except json.JSONDecodeError:
-        # st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
         return {}
 
 # --- Cargar Variables Globales desde JSON ---
@@ -43,7 +42,7 @@ METODOS_PAGO = list(COMISIONES_PAGO.keys())
 
 
 # ===============================================
-# 2. FUNCIONES DE PERSISTENCIA Y CÁLCULO
+# 2. FUNCIONES DE PERSISTENCIA, CÁLCULO Y ESTILO
 # ===============================================
 
 @st.cache_data
@@ -51,7 +50,6 @@ def load_data():
     """Carga los datos del archivo CSV de forma segura."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        # Convertir a datetime de forma segura, estableciendo un formato si es necesario
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d') 
         return df
     else:
@@ -68,7 +66,6 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
-    # Manejar caso de ítem/lugar nulo o vacío
     if not lugar or not item:
          return {
             'valor_bruto': 0,
@@ -79,30 +76,27 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
-    
-    # 1. Descuento Fijo por Lugar (Base)
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
     # LÓGICA CONDICIONAL: AMAR AUSTRAL (Martes/Viernes)
     if lugar == 'AMAR AUSTRAL':
-        # Asegurar que fecha_atencion sea un objeto date
         if isinstance(fecha_atencion, pd.Timestamp):
             dia_semana = fecha_atencion.weekday()
         elif isinstance(fecha_atencion, date):
             dia_semana = fecha_atencion.weekday()
         else:
-            dia_semana = date.today().weekday() # Fallback seguro
+            dia_semana = date.today().weekday()
             
         if dia_semana == 1:  # Martes
             desc_fijo_lugar = 8000
         elif dia_semana == 4:  # Viernes
             desc_fijo_lugar = 6500
 
-    # 2. Aplicar Comisión de Tarjeta
+    # Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
     desc_tarjeta = valor_bruto * comision_pct
     
-    # 3. Cálculo final del total recibido (Líquido)
+    # Cálculo final
     total_recibido = (
         valor_bruto 
         - desc_fijo_lugar 
@@ -125,9 +119,43 @@ def update_edited_lugar():
     """
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
+
+# --- FUNCIONES PARA FONDO TEMÁTICO ---
+
+@st.cache_data
+def get_base64_of_file(bin_file):
+    """Convierte un archivo binario (como una imagen) a Base64."""
+    if not os.path.exists(bin_file):
+        st.warning(f"⚠️ Advertencia: No se encontró el archivo de fondo '{bin_file}'. El fondo no será visible.")
+        return ""
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+def set_background(png_file):
+    """Establece la imagen de fondo de la aplicación usando CSS inyectado."""
+    bin_str = get_base64_of_file(png_file)
+    if not bin_str:
+        return
+        
+    page_bg_img = f'''
+    <style>
+    .stApp {{
+    background-image: url("data:image/png;base64,{bin_str}");
+    background-size: cover;
+    background-attachment: fixed;
+    }}
+    </style>
+    '''
+    st.markdown(page_bg_img, unsafe_allow_html=True)
+
+
 # ===============================================
 # 3. INTERFAZ DE USUARIO (FRONTEND) - ESTILO LÚDICO
 # ===============================================
+
+# ➡️ EJECUTAR LA FUNCIÓN DE FONDO AQUÍ:
+set_background('fondo_magico.png') 
 
 # 🚀 Configuración de la Página y Título
 st.set_page_config(page_title="🏰 Control de Ingresos Mágicos 🪄", layout="wide")
@@ -147,11 +175,9 @@ st.sidebar.markdown("---")
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data()
     
-# --- Variable para gestionar la edición ---
 if 'edit_index' not in st.session_state:
     st.session_state.edit_index = None 
 
-# --- Variable para almacenar el lugar seleccionado en la edición ---
 if 'edited_lugar_state' not in st.session_state:
     st.session_state.edited_lugar_state = None 
 
@@ -334,7 +360,6 @@ if not df.empty:
     # ----------------------------------------------------
     
     def format_currency(value):
-        # Función de formato de moneda ya definida
         return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
     st.markdown("### 🔑 Metas Clave")
@@ -373,14 +398,12 @@ if not df.empty:
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
-    # Usar un color más lúdico
     st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#ff7f0e") 
     
     # Análisis por Lugar (Plotly)
     st.subheader("🗺️ Mapa de Castillos (Distribución de Ingresos)")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
     
-    # Usar una secuencia de colores más brillante
     fig_lugar = px.pie(
         resumen_lugar,
         values='Total Recibido',
@@ -414,10 +437,8 @@ if not df.empty:
     # Iterar sobre las filas y crear los botones
     for index, row in df_display.iterrows():
         
-        # Crear una estructura de columnas para cada fila
         cols = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
         
-        # Mostrar la información clave de la fila
         cols[0].write(row['Fecha'].strftime('%Y-%m-%d'))
         cols[1].write(row['Lugar'])
         cols[2].write(f"${row['Total Recibido']:,.0f}".replace(",", "."))
@@ -460,18 +481,16 @@ if st.session_state.edit_index is not None:
     index_to_edit = st.session_state.edit_index
     try:
         data_to_edit = st.session_state.atenciones_df.loc[index_to_edit]
-        # Asegurar que la fecha sea un objeto date para el input
         if isinstance(data_to_edit['Fecha'], pd.Timestamp):
              initial_date = data_to_edit['Fecha'].date()
         else:
-             initial_date = date.today() # Fallback
+             initial_date = date.today()
     except KeyError:
         st.error("Error: El índice de la fila a editar no fue encontrado.")
         st.session_state.edit_index = None
         st.session_state.edited_lugar_state = None
         st.rerun()
 
-    # Inicializar el estado del lugar al abrir el modal (si no está ya seteado)
     if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
         st.session_state.edited_lugar_state = data_to_edit['Lugar']
 
@@ -479,7 +498,6 @@ if st.session_state.edit_index is not None:
         
         st.subheader("Modificar Datos de la Aventura")
         
-        # 1. Widgets FUERA DEL FORMULARIO (para manejo de dependencia y cálculo en tiempo real)
         col_edit1_out, col_edit2_out = st.columns(2)
         
         with col_edit1_out:
@@ -487,7 +505,6 @@ if st.session_state.edit_index is not None:
                                           value=initial_date, 
                                           key="edit_fecha")
             
-            # WIDGET LUGAR (FUERA DEL FORMULARIO, CON CALLBACK)
             try:
                 lugar_idx = LUGARES.index(st.session_state.edited_lugar_state)
             except ValueError:
@@ -501,7 +518,6 @@ if st.session_state.edit_index is not None:
                 on_change=update_edited_lugar 
             )
 
-            # WIDGET ÍTEM DEPENDIENTE DEL ESTADO INTERMEDIO
             items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
             
             try:
@@ -528,14 +544,12 @@ if st.session_state.edit_index is not None:
         
         with col_edit2_out: 
             
-            # --- LÓGICA DE PRECIO BASE SUGERIDO CORREGIDA (PARA ACTUALIZAR VALOR BRUTO) ---
+            # --- LÓGICA DE PRECIO BASE SUGERIDO CORREGIDA ---
             current_lugar = st.session_state.edit_lugar
             current_item = st.session_state[item_key]
             
             precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar, {}).get(current_item, 0)
             
-            # Lógica para determinar el valor inicial del input numérico:
-            # Si se está cargando el modal por primera vez O si el Ítem o Lugar han cambiado, usamos el precio sugerido.
             if ('edit_valor_bruto' not in st.session_state or 
                 st.session_state.edit_lugar != data_to_edit['Lugar'] or 
                 st.session_state[item_key] != data_to_edit['Ítem']):
@@ -544,10 +558,8 @@ if st.session_state.edit_index is not None:
                 st.session_state.edit_valor_bruto = initial_valor_bruto
                 
             else:
-                # Si los inputs de Lugar/Ítem NO han cambiado, mantenemos el valor que el usuario pudo haber tipeado manualmente.
                 initial_valor_bruto = st.session_state.edit_valor_bruto
                 
-            # Renderizar el widget usando el valor inicial calculado/mantenido.
             edited_valor_bruto = st.number_input(
                 "💰 **Valor Bruto (Recompensa Manual)**", 
                 min_value=0, 
@@ -555,7 +567,6 @@ if st.session_state.edit_index is not None:
                 step=1000,
                 key="edit_valor_bruto"
             )
-            # --- FIN DE LÓGICA DE PRECIO BASE ---
             
             edited_desc_adicional_manual = st.number_input(
                 "✂️ **Polvo Mágico Extra (Ajuste)**", 
@@ -566,7 +577,7 @@ if st.session_state.edit_index is not None:
             )
 
             # ------------------------------------------------------------------
-            # CÁLCULO Y DISPLAY DE RESULTADOS EN TIEMPO REAL (FUERA DEL FORM)
+            # CÁLCULO Y DISPLAY DE RESULTADOS EN TIEMPO REAL 
             # ------------------------------------------------------------------
             
             recalculo = calcular_ingreso(
@@ -578,7 +589,6 @@ if st.session_state.edit_index is not None:
                 valor_bruto_override=st.session_state.edit_valor_bruto 
             )
 
-            # Mostrar Descuentos 
             st.warning(
                 f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** ${recalculo['desc_tarjeta']:,.0f}".replace(",", ".")
             )
@@ -586,7 +596,6 @@ if st.session_state.edit_index is not None:
             desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
             if st.session_state.edit_lugar == 'AMAR AUSTRAL':
                 dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
-                # Usar la fecha seleccionada en el widget, no la fecha original de la fila
                 desc_lugar_label += f" ({dias_semana.get(st.session_state.edit_fecha.weekday())})" 
 
             st.info(f"**{desc_lugar_label}:** ${recalculo['desc_fijo_lugar']:,.0f}".replace(",", "."))
@@ -601,9 +610,7 @@ if st.session_state.edit_index is not None:
         with st.form("edit_form", clear_on_submit=False):
             col_btn1, col_btn2 = st.columns([1, 1])
 
-            # Botón de Guardar
             if col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary"):
-                # 3. Guardar los cambios (Usamos los valores finales del state y el recalculo ya hecho)
                 st.session_state.atenciones_df.loc[index_to_edit] = {
                     "Fecha": st.session_state.edit_fecha.strftime('%Y-%m-%d'), 
                     "Lugar": st.session_state.edit_lugar, 
@@ -621,11 +628,9 @@ if st.session_state.edit_index is not None:
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
                 st.success(f"🎉 Aventura para {st.session_state.edit_paciente} actualizada exitosamente. Recargando el mapa...")
-                # Dar un pequeño tiempo para que el mensaje sea visible antes del rerun
                 time.sleep(0.5) 
                 st.rerun()
                 
-            # Botón de Cancelar
             if col_btn2.form_submit_button("❌ Cancelar Edición"):
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
