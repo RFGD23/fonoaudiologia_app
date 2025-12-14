@@ -49,7 +49,6 @@ def load_config(filename):
         elif filename == COMISIONES_FILE:
             default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03, 'AMAR AUSTRAL': 0.00}
         elif filename == REGLAS_FILE:
-            # Aseguramos que la regla de AMAR AUSTRAL exista para el ejemplo
             default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}} 
         else:
             default_data = {}
@@ -120,11 +119,9 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
-    # Asegurar que el lugar y el método de pago están en MAYÚSCULAS para coincidir con la configuración
     lugar_upper = lugar.upper() if lugar else ''
     metodo_pago_upper = metodo_pago.upper() if metodo_pago else ''
     
-    # Manejar caso de datos incompletos
     if not lugar_upper or not PRECIOS_BASE_CONFIG or not metodo_pago_upper:
           return {
               'valor_bruto': 0,
@@ -133,18 +130,14 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
               'total_recibido': 0
           }
     
-    # 1. Obtener Valor Bruto
     precio_base = PRECIOS_BASE_CONFIG.get(lugar_upper, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
     # 2. LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo)
-    
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
     
     # 2.1. Revisar si existe una regla especial para el día
     if lugar_upper in DESCUENTOS_REGLAS:
-        
-        # Intentar obtener el día de la semana
         try:
             if isinstance(fecha_atencion, pd.Timestamp):
                 dia_semana_num = fecha_atencion.weekday()
@@ -153,20 +146,15 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             else:
                 dia_semana_num = date.today().weekday()
             
-            dia_nombre = DIAS_SEMANA[dia_semana_num].upper() # Obtener el nombre del día en mayúsculas
-            
-            # Buscar la regla específica para el día en MAYÚSCULAS
+            dia_nombre = DIAS_SEMANA[dia_semana_num].upper() 
             regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
             
-            # 2.2. Si la regla especial existe, sobrescribe el descuento base
             if regla_especial is not None:
                 desc_fijo_lugar = regla_especial 
         except Exception:
-             # Si falla la conversión de fecha, se usa el descuento base.
              pass
 
-
-    # 3. Aplicar Comisión de Tarjeta usando la clave en MAYÚSCULAS
+    # 3. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
     desc_tarjeta = valor_bruto * comision_pct
     
@@ -185,20 +173,16 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': int(total_recibido)
     }
 
-# 🚨 CORRECCIÓN CLAVE: Esta función ahora no solo actualiza el Valor Bruto, 
-# sino que también fuerza la actualización del Desc. Adicional a 0 y 
-# asegura que el Item seleccionado exista, evitando errores.
+# --- Funciones de Reactividad ---
+
 def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
-    Fuerza la recarga del precio base y reinicia el descuento adicional.
     """
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
     
-    # 1. Obtener la lista de ítems disponibles para el nuevo lugar
     items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
 
-    # 2. Determinar el ítem a usar para el cálculo y selección
     current_item = st.session_state.get('form_item')
     
     item_calc_for_price = None
@@ -206,30 +190,34 @@ def update_price_from_item_or_lugar():
     if not items_disponibles:
         st.session_state.form_item = ''
         st.session_state.form_valor_bruto = 0
-        st.session_state.form_desc_adic = 0
+        st.session_state.form_desc_adic_input = 0 # Usar el key del number_input
         return
         
     if current_item not in items_disponibles:
-        # Si el ítem actual no está en el nuevo lugar, seleccionamos el primero disponible
         st.session_state.form_item = items_disponibles[0]
         item_calc_for_price = items_disponibles[0]
     else:
-        # El ítem actual es válido
         item_calc_for_price = current_item
         
-    # 3. Calcular el precio base sugerido
     if not lugar_key_current or not item_calc_for_price:
         st.session_state.form_valor_bruto = 0
-        st.session_state.form_desc_adic = 0
+        st.session_state.form_desc_adic_input = 0
         return
         
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
     
-    # 4. Actualizar el estado de sesión para el formulario
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
-    st.session_state.form_desc_adic = 0 # Reiniciar descuento adicional para forzar el recálculo
+    # 🚨 NOTA: NO reiniciamos el descuento adicional aquí, pero sí forzamos el nuevo valor bruto.
     
-    # st.experimental_rerun() # Esto no es necesario si se actualiza el state, pero puede ser una alternativa si falla.
+# 🚨 NUEVA FUNCIÓN DE REACTIVIDAD 🚨
+def force_recalculate():
+    """
+    Función de callback simple para forzar el recálculo (rerun)
+    al cambiar los number_input.
+    """
+    # Streamlit detecta que el estado de sesión ha cambiado y redibuja.
+    # El st.rerun() aquí es crucial para actualizar el cálculo final fuera del form.
+    st.rerun()
 
 def update_edit_price():
     """
@@ -240,14 +228,12 @@ def update_edit_price():
     
     if not lugar_key_edit or not item_key_edit:
         st.session_state.edit_valor_bruto = 0
-        st.session_state.edit_desc_adic = 0
         return
         
     precio_base_sugerido_edit = PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).get(item_key_edit, 0)
     
-    # 🚨 CORRECCIÓN: Asegurar que se sobrescribe el valor bruto y el desc. adicional se mantiene/reinicia
     st.session_state.edit_valor_bruto = int(precio_base_sugerido_edit)
-    # No tocamos st.session_state.edit_desc_adic para mantener el valor original si ya fue inicializado
+    
 
 def set_dark_mode_theme():
     """Establece transparencia y ajusta la apariencia de los contenedores para el tema oscuro."""
@@ -278,10 +264,9 @@ def sanitize_number_input(value):
     if pd.isna(value) or value is None:
         return 0
     try:
-        # Intenta convertir a int directamente (maneja floats como 7000.0 -> 7000)
         return int(float(value))
     except (ValueError, TypeError):
-        return 0 # Devuelve 0 si la conversión falla
+        return 0 
 
 
 # ===============================================
@@ -301,19 +286,16 @@ st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
 # --- Herramientas de Mantenimiento ---
 if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondary"):
-    # Limpiar todos los cachés
     st.cache_data.clear() 
     st.cache_resource.clear() 
     
-    # Recargar configuración y datos
     re_load_global_config() 
     st.session_state.atenciones_df = load_data() 
     
-    # Reiniciar el estado de sesión para el formulario
-    if 'form_lugar' in st.session_state: del st.session_state['form_lugar']
-    if 'form_item' in st.session_state: del st.session_state['form_item']
-    if 'form_valor_bruto' in st.session_state: del st.session_state['form_valor_bruto']
-    if 'form_desc_adic' in st.session_state: del st.session_state['form_desc_adic']
+    # Reiniciar el estado de sesión de los inputs del formulario principal
+    keys_to_delete = ['form_lugar', 'form_item', 'form_valor_bruto', 'form_desc_adic_input', 'form_metodo_pago']
+    for key in keys_to_delete:
+         if key in st.session_state: del st.session_state[key]
     
     st.success("Caché, Configuración y Datos Recargados. ¡La magia continúa!")
     st.rerun() 
@@ -336,11 +318,11 @@ with tab_registro:
     
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' para agregar datos iniciales.")
-        st.stop()
+        # No usamos st.stop() aquí para permitir que el usuario acceda a la pestaña de Configuración.
     
     # 1. Definir valores iniciales y forzar la inicialización si faltan
     
-    lugar_key_initial = LUGARES[0] # El valor del SelectBox se guarda en MAYÚSCULAS (por LUGARES)
+    lugar_key_initial = LUGARES[0] if LUGARES else ''
     
     if 'form_lugar' not in st.session_state:
         st.session_state.form_lugar = lugar_key_initial
@@ -359,8 +341,8 @@ with tab_registro:
     if 'form_valor_bruto' not in st.session_state:
         st.session_state.form_valor_bruto = int(precio_base_sugerido)
         
-    if 'form_desc_adic' not in st.session_state:
-        st.session_state.form_desc_adic = 0
+    if 'form_desc_adic_input' not in st.session_state:
+        st.session_state.form_desc_adic_input = 0
     # ----------------------------------------------------------------------
     # WIDGETS REACTIVOS FUERA DEL FORMULARIO 
     # ----------------------------------------------------------------------
@@ -369,13 +351,11 @@ with tab_registro:
 
     # 1. SELECTBOX LUGAR
     with col_reactivo_1:
-        # Aseguramos que el índice no falle si el valor no está en LUGARES
         try:
-            lugar_index = LUGARES.index(st.session_state.form_lugar)
+            lugar_index = LUGARES.index(st.session_state.form_lugar) if st.session_state.form_lugar in LUGARES else 0
         except ValueError:
             lugar_index = 0
 
-        # Al cambiar el lugar, se llama a update_price_from_item_or_lugar
         st.selectbox("📍 Castillo/Lugar de Atención", 
                      options=LUGARES, 
                      key="form_lugar",
@@ -390,11 +370,10 @@ with tab_registro:
         item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
         
         try:
-            item_index = items_filtrados_current.index(item_para_seleccionar)
+            item_index = items_filtrados_current.index(item_para_seleccionar) if item_para_seleccionar in items_filtrados_current else 0
         except (ValueError, KeyError):
             item_index = 0 
             
-        # Al cambiar el ítem, se llama a update_price_from_item_or_lugar
         st.selectbox("📋 Poción/Procedimiento", 
                      options=items_filtrados_current, 
                      key="form_item",
@@ -407,7 +386,8 @@ with tab_registro:
             "💰 **Valor Bruto (Recompensa)**", 
             min_value=0, 
             step=1000,
-            key="form_valor_bruto" 
+            key="form_valor_bruto", 
+            on_change=force_recalculate # 🚨 RECALCULAR AL CAMBIAR EL VALOR BRUTO
         )
         
     # ----------------------------------------------------------------------
@@ -416,16 +396,15 @@ with tab_registro:
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles Adicionales y Cálculo Final", expanded=True):
             
-            # Chequeo de configuración
-            if not items_filtrados_initial:
-                st.warning("No hay ítems configurados para este lugar. Configure la pestaña.")
+            if not items_filtrados_initial and LUGARES: # Si hay lugares pero no items, se detiene
+                st.warning(f"No hay ítems configurados para el lugar '{current_lugar_value_upper}'. Configure la pestaña.")
                 st.form_submit_button("Añadir datos antes de registrar", disabled=True)
-                # No hacemos st.stop() aquí para que el usuario pueda ver el botón y la advertencia.
+                st.stop()
+
 
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                # 🚨 IMPORTANTE: Se usa st.session_state para la fecha también
                 fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha") 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 
@@ -434,32 +413,29 @@ with tab_registro:
                 except ValueError:
                     pago_idx = 0
                 metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago", index=pago_idx)
-
+                
             with col2:
                 
-                # 🚨 CORRECCIÓN CRÍTICA: Se usa el key `form_desc_adic` que se inicializa fuera del form
+                # 🚨 IMPORTANTE: El Number Input de ajuste está dentro del form, PERO el key debe ser distinto
+                # al key usado para la inicialización.
                 desc_adicional_manual = st.number_input(
                     "✂️ **Polvo Mágico Extra (Ajuste)**", 
                     min_value=-500000, 
-                    value=st.session_state.get('form_desc_adic', 0), 
+                    value=st.session_state.get('form_desc_adic_input', 0), 
                     step=1000, 
-                    key="form_desc_adic_form", # Cambiamos el key para evitar conflicto de reinicialización
+                    key="form_desc_adic_input",
+                    on_change=force_recalculate, # 🚨 RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
-                # Sincronizar el valor entre el input fuera del form y el input dentro del form (si el usuario lo modifica)
-                if 'form_desc_adic' not in st.session_state:
-                     st.session_state.form_desc_adic = 0
-                
-                # El valor del input dentro del form es el que usamos para el cálculo
-                desc_adicional_calc = st.session_state.form_desc_adic_form 
+                desc_adicional_calc = st.session_state.form_desc_adic_input 
                 
                 # Ejecutar el cálculo central en tiempo real. 
                 resultados = calcular_ingreso(
                     st.session_state.form_lugar, 
                     st.session_state.form_item,              
                     st.session_state.form_metodo_pago,
-                    desc_adicional_calc, # Usamos el valor del widget dentro del form
+                    desc_adicional_calc,
                     fecha_atencion=st.session_state.form_fecha, 
                     valor_bruto_override=st.session_state.form_valor_bruto 
                 )
@@ -508,7 +484,7 @@ with tab_registro:
                         st.session_state.form_lugar, 
                         st.session_state.form_item, 
                         st.session_state.form_metodo_pago, 
-                        st.session_state.form_desc_adic_form, # Usar el valor del form
+                        st.session_state.form_desc_adic_input, 
                         fecha_atencion=st.session_state.form_fecha, 
                         valor_bruto_override=st.session_state.form_valor_bruto
                     )
@@ -523,7 +499,7 @@ with tab_registro:
                         "Valor Bruto": resultados_finales['valor_bruto'],
                         "Desc. Fijo Lugar": resultados_finales['desc_fijo_lugar'],
                         "Desc. Tarjeta": resultados_finales['desc_tarjeta'],
-                        "Desc. Adicional": st.session_state.form_desc_adic_form, # Usar el valor del form
+                        "Desc. Adicional": st.session_state.form_desc_adic_input, 
                         "Total Recibido": resultados_finales['total_recibido']
                     }
                     
@@ -537,9 +513,14 @@ with tab_registro:
                     save_data(st.session_state.atenciones_df)
                     st.success(f"🎉 ¡Aventura registrada para {st.session_state.form_paciente}! El tesoro es {format_currency(resultados_finales['total_recibido'])}")
                     
-                    # 4. Forzar recarga para limpiar el formulario y actualizar la lista de datos
-                    st.session_state.form_valor_bruto = int(precio_base_sugerido)
-                    st.session_state.form_desc_adic = 0
+                    # 4. Forzar recarga de los selectboxes y number inputs.
+                    # El form, al ser clear_on_submit=True, ya se limpia, pero aseguramos la inicialización
+                    # de los widgets fuera del form.
+                    if LUGARES: st.session_state.form_lugar = LUGARES[0]
+                    if items_filtrados_initial: st.session_state.form_item = items_filtrados_initial[0]
+                    st.session_state.form_valor_bruto = int(PRECIOS_BASE_CONFIG.get(LUGARES[0], {}).get(items_filtrados_initial[0], 0) if LUGARES and items_filtrados_initial else 0)
+                    st.session_state.form_desc_adic_input = 0
+                    
                     st.rerun() 
 
 
@@ -894,7 +875,8 @@ with tab_dashboard:
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
                     step=1000,
-                    key="edit_valor_bruto" 
+                    key="edit_valor_bruto" ,
+                    on_change=force_recalculate # 🚨 RECALCULAR AL CAMBIAR EL VALOR BRUTO
                 )
 
                 edited_desc_adicional_manual = st.number_input(
@@ -903,6 +885,7 @@ with tab_dashboard:
                     value=st.session_state.edit_desc_adic, 
                     step=1000, 
                     key="edit_desc_adic",
+                    on_change=force_recalculate, # 🚨 RECALCULAR AL CAMBIAR EL DESCUENTO EXTRA
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
@@ -1028,7 +1011,7 @@ with tab_config:
                 for _, row in edited_df_precios.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     item = str(row['Ítem'])
-                    valor = sanitize_number_input(row['Valor Bruto']) # <-- SANITIZACIÓN CLAVE
+                    valor = sanitize_number_input(row['Valor Bruto']) 
                     
                     if lugar and item:
                         if lugar not in new_precios_config:
@@ -1082,7 +1065,7 @@ with tab_config:
                 new_descuentos_config = {}
                 for _, row in edited_df_descuentos.iterrows():
                     lugar = str(row['Lugar']).upper() 
-                    valor = sanitize_number_input(row['Desc. Fijo Base']) # <-- SANITIZACIÓN CLAVE
+                    valor = sanitize_number_input(row['Desc. Fijo Base']) 
                     if lugar:
                         new_descuentos_config[lugar] = valor
                 
@@ -1136,7 +1119,7 @@ with tab_config:
                 for _, row in edited_df_reglas.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     dia = str(row['Día']).upper() 
-                    monto = sanitize_number_input(row['Descuento Regla']) # <-- SANITIZACIÓN CLAVE
+                    monto = sanitize_number_input(row['Descuento Regla']) 
                     
                     if lugar and dia:
                         if lugar not in new_reglas_config:
@@ -1207,4 +1190,3 @@ with tab_config:
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar comisiones: {e}")
-            
