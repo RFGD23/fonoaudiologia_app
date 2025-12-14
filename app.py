@@ -250,10 +250,10 @@ if not df.empty:
         (df['Fecha'].dt.date <= fecha_fin)
     ]
     
-    if df_filtrado.empty:
+   if df_filtrado.empty:
         st.warning("No hay datos registrados en el rango de fechas seleccionado.")
-        # Salir del bloque para no intentar calcular métricas con DataFrame vacío
-        return 
+        # Usamos st.stop() para detener la ejecución de Streamlit de forma segura
+        st.stop()
 
     # A partir de aquí, usamos df_filtrado en lugar de df
     df = df_filtrado
