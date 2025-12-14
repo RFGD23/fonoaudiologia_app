@@ -145,35 +145,58 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         'total_recibido': total_recibido
     }
 
-# <<< CALLBACK PARA EL FORMULARIO DE REGISTRO (SIN CAMBIOS) >>>
+# <<< CORRECCIÓN DE FLUJO CRÍTICA: MEJORA DEL CALLBACK DE PRECIO >>>
 def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
-    Fuerza la actualización de 'form_valor_bruto' en el Session State.
+    Fuerza la actualización de 'form_valor_bruto' en el Session State,
+    manejando el cambio de Ítem al cambiar de Lugar.
     """
-    # 1. Asegurarse de que los valores de los selectbox están en el estado
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
-    item_calc_for_price = st.session_state.get('form_item', '')
     
-    # 2. Si no hay lugar o ítem, resetear a 0.
+    # Obtener la lista de ítems del nuevo lugar
+    items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
+
+    # --- Lógica 1: Ajustar el Ítem si el Lugar cambia ---
+    current_item = st.session_state.get('form_item')
+    
+    # Si el ítem actual no está en la nueva lista de ítems del lugar
+    if current_item not in items_disponibles:
+        # Forzar el primer ítem de la nueva lista como valor seleccionado
+        if items_disponibles:
+            st.session_state.form_item = items_disponibles[0]
+            item_calc_for_price = items_disponibles[0]
+        else:
+            # Si no hay ítems disponibles, resetear
+            st.session_state.form_item = ''
+            st.session_state.form_valor_bruto = 0
+            st.session_state.form_desc_adic = 0
+            return
+    else:
+        # Si el ítem es válido, lo usamos.
+        item_calc_for_price = current_item
+        
+    # --- Lógica 2: Calcular el nuevo precio base ---
+    
+    # En este punto, 'item_calc_for_price' es el ítem correcto a usar.
     if not lugar_key_current or not item_calc_for_price:
         st.session_state.form_valor_bruto = 0
         return
         
-    # 3. Calcular el nuevo precio base
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
     
-    # 4. Establecer el nuevo valor en el Session State
+    # 3. Establecer el nuevo valor en el Session State
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
     
     # OPCIONAL: Resetear el descuento adicional al cambiar la base
     st.session_state.form_desc_adic = 0
+# <<< FIN CORRECCIÓN DE FLUJO CRÍTICA >>>
 
 def update_edited_lugar():
     """Actualiza el lugar seleccionado en el modal de edición."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
-# <<< CALLBACK PARA EL FORMULARIO DE EDICIÓN (SIN CAMBIOS) >>>
+# <<< CALLBACK PARA EL FORMULARIO DE EDICIÓN >>>
 def update_edit_price():
     """
     Callback llamado cuando 'edit_lugar' o 'edit_item' cambia en el modal de edición.
@@ -286,9 +309,7 @@ with tab_registro:
     if 'form_desc_adic' not in st.session_state:
         st.session_state.form_desc_adic = 0
     # ----------------------------------------------------------------------
-    # <<< CORRECCIÓN CRÍTICA: WIDGETS REACTIVOS FUERA DEL FORMULARIO >>>
-    # Estos widgets usan el callback on_change para modificar 'form_valor_bruto', 
-    # por lo que DEBEN estar fuera del st.form.
+    # WIDGETS REACTIVOS FUERA DEL FORMULARIO (Solución al error StreamlitInvalidFormCallbackError)
     # ----------------------------------------------------------------------
 
     col_reactivo_1, col_reactivo_2, col_reactivo_3 = st.columns(3)
@@ -304,23 +325,26 @@ with tab_registro:
                      options=LUGARES, 
                      key="form_lugar",
                      index=lugar_index,
-                     on_change=update_price_from_item_or_lugar) # <-- Callback AHORA FUNCIONA
+                     on_change=update_price_from_item_or_lugar) 
     
     # 2. SELECTBOX ÍTEM
     with col_reactivo_2:
         lugar_key_current = st.session_state.form_lugar.upper()
         items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
         
+        # AJUSTE: Usar el valor del state que pudo ser forzado por el callback
+        item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
+        
         try:
-            item_index = items_filtrados_current.index(st.session_state.form_item)
+            item_index = items_filtrados_current.index(item_para_seleccionar)
         except (ValueError, KeyError):
             item_index = 0 
             
         st.selectbox("📋 Poción/Procedimiento", 
                      options=items_filtrados_current, 
                      key="form_item",
-                     index=item_index,
-                     on_change=update_price_from_item_or_lugar) # <-- Callback AHORA FUNCIONA
+                     index=item_index, # Usa el índice ya calculado
+                     on_change=update_price_from_item_or_lugar) 
     
     # 3. VALOR BRUTO
     with col_reactivo_3:
@@ -329,7 +353,7 @@ with tab_registro:
             min_value=0, 
             value=st.session_state.form_valor_bruto, 
             step=1000,
-            key="form_valor_bruto" # Permite al usuario editar manualmente
+            key="form_valor_bruto" 
         )
         
     # ----------------------------------------------------------------------
@@ -338,7 +362,7 @@ with tab_registro:
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles Adicionales y Cálculo Final", expanded=True):
             
-            # Chequeo de configuración (si faltan ítems, forzamos stop)
+            # Chequeo de configuración
             if not items_filtrados_initial:
                 st.warning("No hay ítems configurados para este lugar. Configure la pestaña.")
                 st.form_submit_button("Añadir datos antes de registrar", disabled=True)
@@ -349,7 +373,7 @@ with tab_registro:
 
             with col1:
                 # Los datos ya seleccionados (Lugar, Ítem, Valor Bruto) se leen del Session State.
-                fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha_form") # Key cambiada para no chocar con el estado de formulario
+                fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha_form") 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 
                 try:
@@ -372,12 +396,12 @@ with tab_registro:
                 
                 # Ejecutar el cálculo central en tiempo real
                 resultados = calcular_ingreso(
-                    st.session_state.form_lugar.upper(),       # Usar el state del selectbox exterior
-                    st.session_state.form_item,              # Usar el state del selectbox exterior
+                    st.session_state.form_lugar.upper(),       
+                    st.session_state.form_item,              
                     st.session_state.form_metodo_pago,
                     st.session_state.form_desc_adic,  
                     fecha_atencion=st.session_state.form_fecha_form, 
-                    valor_bruto_override=st.session_state.form_valor_bruto # Usar el state del number_input exterior
+                    valor_bruto_override=st.session_state.form_valor_bruto 
                 )
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
@@ -418,7 +442,7 @@ with tab_registro:
                     
                     # 2. Creación del nuevo registro
                     nueva_atencion = {
-                        "Fecha": st.session_state.form_fecha_form.strftime('%Y-%m-%d'), # Usar key correcta
+                        "Fecha": st.session_state.form_fecha_form.strftime('%Y-%m-%d'), 
                         "Lugar": st.session_state.form_lugar, 
                         "Ítem": st.session_state.form_item, 
                         "Paciente": st.session_state.form_paciente, 
@@ -738,8 +762,6 @@ with tab_dashboard:
             
             st.subheader("Modificar Datos de la Atención")
             
-            # Nota: Los widgets en el modal de edición pueden usar on_change 
-            # ya que no están dentro de un st.form.
             
             col_edit1_out, col_edit2_out = st.columns(2)
             
