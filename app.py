@@ -142,8 +142,8 @@ def update_valor_bruto_on_item_change():
     Callback: FUERZA la actualización del valor bruto sugerido cuando cambia 
     el ítem o el lugar en el formulario de registro.
     
-    ESTA FUNCIÓN AHORA SE ASEGURA DE ACTUALIZAR EL PRECIO 
-    INCLUSO SI EL ÍTEM SELECCIONADO POR DEFECTO NO CAMBIÓ DE ÍNDICE.
+    Asegura la actualización del precio incluso si el ítem seleccionado por defecto 
+    no cambió de índice (corrección del problema reportado).
     """
     lugar_key = st.session_state.new_lugar.upper()
     
@@ -226,6 +226,9 @@ def set_dark_mode_theme():
     '''
     st.markdown(dark_mode_css, unsafe_allow_html=True)
 
+def format_currency(value):
+    """Función para formatear números como moneda en español con punto y coma."""
+    return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ===============================================
 # 3. INTERFAZ DE USUARIO (FRONTEND) - ESTILO LÚDICO
@@ -294,7 +297,6 @@ with tab_registro:
             fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="new_fecha")
             
             # 1. SELECTBOX LUGAR (con Callback)
-            # Usamos el valor inicial de st.session_state.new_lugar
             try:
                 lugar_index = LUGARES.index(st.session_state.new_lugar)
             except ValueError:
@@ -313,7 +315,6 @@ with tab_registro:
             items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_key, {}).keys())
             
             # 2. SELECTBOX ÍTEM (con Callback)
-            # Intentamos obtener el índice del ítem seleccionado en el estado de sesión dentro de la lista filtrada
             try:
                 item_index = items_filtrados.index(st.session_state.new_item)
             except ValueError:
@@ -331,8 +332,6 @@ with tab_registro:
 
         with col2:
             # --- LÓGICA DE VALOR BRUTO USANDO EL ESTADO DE SESIÓN ---
-            # El valor inicial se toma del estado de sesión, que fue inicializado o actualizado por el callback
-            
             valor_bruto_input = st.number_input(
                 "💰 **Valor Bruto (Recompensa)**", 
                 min_value=0, 
@@ -374,7 +373,7 @@ with tab_registro:
             st.markdown("###")
             # Cambio de color a verde (success) para resaltar el ingreso
             st.success(
-                f"## 💎 Tesoro Total (Líquido): ${resultados['total_recibido']:,.0f}".replace(",", ".")
+                f"## 💎 Tesoro Total (Líquido): {format_currency(resultados['total_recibido'])}"
             )
             
             # Botón para registrar la atención
@@ -397,9 +396,8 @@ with tab_registro:
                     
                     st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                     save_data(st.session_state.atenciones_df)
-                    st.success(f"🎉 ¡Aventura registrada para {paciente}! El tesoro es ${resultados['total_recibido']:,.0f}".replace(",", "."))
+                    st.success(f"🎉 ¡Aventura registrada para {paciente}! El tesoro es {format_currency(resultados['total_recibido'])}")
                     # Limpiar estado de sesión para forzar la inicialización al primer valor en la próxima ejecución
-                    # Esto evita que un ítem de un lugar se arrastre a otro
                     del st.session_state.new_lugar
                     del st.session_state.new_item
                     del st.session_state.new_valor_bruto
@@ -497,11 +495,8 @@ with tab_dashboard:
         df = df_filtrado
         
         # ----------------------------------------------------
-        # MÉTRICAS PRINCIPALES (KPIs) - ESTILO MÁS VISUAL
+        # MÉTRICAS PRINCIPALES (KPIs)
         # ----------------------------------------------------
-        
-        def format_currency(value):
-            return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
         st.markdown("### 🔑 Metas Clave")
         col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
@@ -516,33 +511,95 @@ with tab_dashboard:
         col_kpi3.metric("👸 Total Héroes Atendidos", f"{total_atenciones_historico:,}".replace(",", "."))
         
         st.markdown("---")
-        st.subheader("💔 Los Maleficios y Tributos (Descuentos)")
         
-        col_det1, col_det2 = st.columns(2)
+        # ----------------------------------------------------
+        # NUEVA SECCIÓN: ANÁLISIS DE RENTABILIDAD Y COSTOS
+        # ----------------------------------------------------
+        st.header("⚖️ Análisis de Rentabilidad y Costos")
+
+        # 1. Cálculo de Reducciones (Costos)
+        df['Total Reducciones'] = df["Desc. Fijo Lugar"] + df["Desc. Tarjeta"] + df["Desc. Adicional"]
+        total_cost_reductions = df['Total Reducciones'].sum()
+        total_atenciones = len(df)
+        avg_net_income = df["Total Recibido"].mean()
         
-        total_desc_tarjeta = df["Desc. Tarjeta"].sum()
-        col_det1.metric(
-            "💳 Comisiones del Hada Madrina (Tarjeta)", 
-            format_currency(total_desc_tarjeta)
-        )
-        
-        total_desc_fijo_lugar = df["Desc. Fijo Lugar"].sum()
-        col_det2.metric(
-            "📍 Tributo Fijo al Castillo", 
-            format_currency(total_desc_fijo_lugar)
+        col_r1, col_r2, col_r3 = st.columns(3)
+
+        # New KPI 1: Total Cost/Reductions
+        col_r1.metric(
+            "💰 Total Descuentos/Costos Aplicados", 
+            format_currency(total_cost_reductions),
         )
 
+        # New KPI 2: Average Net Margin
+        col_r2.metric(
+            "📊 Ingreso Neto Promedio por Atención", 
+            format_currency(avg_net_income)
+        )
+        
+        # New KPI 3: Average Cost per Attention
+        avg_cost_reduction = total_cost_reductions / total_atenciones
+        col_r3.metric(
+            "💔 Costo Promedio por Atención",
+            format_currency(avg_cost_reduction)
+        )
+        
+        st.markdown("---")
+
+        col_c1, col_c2 = st.columns(2)
+        
+        with col_c1:
+            # Chart 1: Cost Breakdown (Pie Chart)
+            st.subheader("💔 Desglose de Costos (Maleficios)")
+            cost_summary = pd.DataFrame({
+                'Tipo': ['Tributo Fijo al Lugar', 'Comisión Tarjeta', 'Ajuste Manual'],
+                'Monto': [
+                    df["Desc. Fijo Lugar"].sum(), 
+                    df["Desc. Tarjeta"].sum(), 
+                    df["Desc. Adicional"].sum()
+                ]
+            })
+
+            fig_cost_breakdown = px.pie(
+                cost_summary,
+                values='Monto',
+                names='Tipo',
+                title='Distribución de las Reducciones Aplicadas',
+                color_discrete_sequence=px.colors.qualitative.Dark24
+            )
+            fig_cost_breakdown.update_traces(textposition='inside', textinfo='percent+label', marker=dict(line=dict(color='#000000', width=1)))
+            st.plotly_chart(fig_cost_breakdown, use_container_width=True)
+
+        with col_c2:
+            # Chart 2: Monthly Profitability Trend
+            st.subheader("📉 Evolución Mensual: Ingreso Neto vs. Costos")
+
+            df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
+            df_monthly = df.groupby('Mes_Año').agg({
+                'Total Recibido': 'sum',
+                'Total Reducciones': 'sum'
+            }).reset_index()
+
+            df_monthly.columns = ['Mes_Año', 'Ingreso Neto Total', 'Costos Totales']
+
+            fig_monthly_profitability = px.line(
+                df_monthly,
+                x='Mes_Año',
+                y=['Ingreso Neto Total', 'Costos Totales'],
+                title='Tendencia Mensual de Ingresos Netos y Costos',
+                markers=True,
+                color_discrete_map={
+                    'Ingreso Neto Total': 'green',
+                    'Costos Totales': 'red'
+                }
+            )
+            fig_monthly_profitability.update_layout(yaxis_title="Monto ($)")
+            st.plotly_chart(fig_monthly_profitability, use_container_width=True)
+            
         st.markdown("---")
         
-        # Análisis Mensual
-        st.subheader("🚀 El Viaje en el Tiempo (Evolución Mensual)")
-        df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
-        resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
-        
-        st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#ff7f0e") 
-        
         # Análisis por Lugar (Plotly)
-        st.subheader("🗺️ Mapa de Castillos (Distribución de Ingresos)")
+        st.subheader("🗺️ Mapa de Castillos (Distribución de Ingresos Netos)")
         resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
         
         fig_lugar = px.pie(
@@ -582,7 +639,7 @@ with tab_dashboard:
             
             cols[0].write(row['Fecha'].strftime('%Y-%m-%d'))
             cols[1].write(row['Lugar'])
-            cols[2].write(f"${row['Total Recibido']:,.0f}".replace(",", "."))
+            cols[2].write(format_currency(row['Total Recibido']))
             cols[3].write(row['Paciente'])
             
             # --- BOTÓN DE EDICIÓN ---
@@ -699,7 +756,7 @@ with tab_dashboard:
                     current_lugar_key != data_to_edit['Lugar'].upper() or 
                     st.session_state[item_key] != data_to_edit['Ítem']):
                     
-                    initial_valor_bruto = int(precio_base_sugerido)
+                    initial_valor_bruto = int(data_to_edit['Valor Bruto'])
                     st.session_state.edit_valor_bruto = initial_valor_bruto
                     
                 else:
@@ -735,7 +792,7 @@ with tab_dashboard:
                 )
 
                 st.warning(
-                    f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** ${recalculo['desc_tarjeta']:,.0f}".replace(",", ".")
+                    f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** {format_currency(recalculo['desc_tarjeta'])}"
                 )
                 
                 desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
@@ -743,11 +800,11 @@ with tab_dashboard:
                     dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                     desc_lugar_label += f" ({dias_semana.get(st.session_state.edit_fecha.weekday())})" 
 
-                st.info(f"**{desc_lugar_label}:** ${recalculo['desc_fijo_lugar']:,.0f}".replace(",", "."))
+                st.info(f"**{desc_lugar_label}:** {format_currency(recalculo['desc_fijo_lugar'])}")
                 
                 st.markdown("###")
                 st.success(
-                    f"## 💎 NUEVO TOTAL LÍQUIDO: ${recalculo['total_recibido']:,.0f}".replace(",", ".")
+                    f"## 💎 NUEVO TOTAL LÍQUIDO: {format_currency(recalculo['total_recibido'])}"
                 )
                 # ------------------------------------------------------------------
             
