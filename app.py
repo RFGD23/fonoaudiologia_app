@@ -5,7 +5,7 @@ import os
 import json 
 import time 
 import base64 
-import plotly.express as px # Importación corregida de Plotly Express
+import plotly.express as px # Importación de Plotly Express
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -136,10 +136,16 @@ def get_base64_of_file(bin_file):
         st.error(f"Error al leer el archivo de fondo: {e}")
         return ""
 
-def set_background(png_file):
+def set_background(img_file):
     """Establece la imagen de fondo usando CSS inyectado y transparencia."""
-    bin_str = get_base64_of_file(png_file)
+    bin_str = get_base64_of_file(img_file)
     
+    # Determinar el tipo MIME según la extensión del archivo para la compatibilidad
+    if img_file.lower().endswith('.jpg') or img_file.lower().endswith('.jpeg'):
+        mime_type = "image/jpeg"
+    else:
+        mime_type = "image/png" 
+
     # 🚨 LÍNEA DE DIAGNÓSTICO (Silenciosa) 🚨
     if len(bin_str) < 100:
         return
@@ -157,9 +163,9 @@ def set_background(png_file):
     
     /* Aplicamos el fondo al contenedor principal de Streamlit (.main) */
     .main {{
-        background-image: url("data:image/png;base64,{bin_str}");
+        background-image: url("data:{mime_type};base64,{bin_str}"); /* USAMOS EL TIPO MIME DETECTADO */
         background-size: cover; 
-        background-attachment: fixed !important; /* <--- ¡FONDO FIJO / PARALAJE! */
+        background-attachment: fixed !important; /* FONDO FIJO / PARALAJE */
         background-repeat: no-repeat;
         min-height: 100vh;
     }}
@@ -210,7 +216,7 @@ def set_background(png_file):
 # ===============================================
 
 # ➡️ EJECUTAR LA FUNCIÓN DE FONDO AQUÍ:
-set_background('fondo_magico.png') 
+set_background('fondo_magico.jpg') # <--- LLAMADA A LA IMAGEN EN FORMATO JPG
 
 # 🚀 Configuración de la Página y Título
 st.set_page_config(page_title="🏰 Control de Ingresos Mágicos 🪄", layout="wide")
