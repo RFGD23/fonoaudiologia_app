@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 import os
 import io
+import plotly.express as px
 
 # ===============================================
 # CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)8
