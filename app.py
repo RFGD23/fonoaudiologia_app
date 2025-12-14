@@ -196,7 +196,7 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                 st.balloons()
 
 # ===============================================
-# 4. DASHBOARD DE RESUMEN (CON TODOS LOS FILTROS)
+# 4. DASHBOARD DE RESUMEN (CON TODOS LOS FILTROS Y ELIMINACIÓN)
 # ===============================================
 st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
@@ -206,7 +206,7 @@ df = st.session_state.atenciones_df
 if not df.empty:
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
 
-    # --- FILTROS DINÁMICOS EN LA BARRA LATERAL (Mejora 7) ---
+    # --- FILTROS DINÁMICOS EN LA BARRA LATERAL (Lugar e Ítem) ---
     st.sidebar.header("🔍 Filtros de Análisis")
     
     # Filtro por Lugar
@@ -216,9 +216,8 @@ if not df.empty:
         options=lugares_disponibles
     )
     
-    # Filtro por Ítem (depende del Lugar si está seleccionado, si no, usa todos)
+    # Filtro por Ítem 
     if filtro_lugar != 'Todos':
-        # Filtramos primero por lugar para ofrecer solo ítems relevantes
         df_lugar = df[df['Lugar'] == filtro_lugar]
         items_disponibles = ['Todos'] + sorted(df_lugar['Ítem'].unique().tolist())
     else:
@@ -234,20 +233,16 @@ if not df.empty:
     # APLICACIÓN DE FILTROS 1 Y 2 (Lugar e Ítem)
     # ----------------------------------------------------
     
-    # 1. Aplicar Filtro de Lugar
     if filtro_lugar != 'Todos':
         df = df[df['Lugar'] == filtro_lugar]
         
-    # 2. Aplicar Filtro de Ítem
     if filtro_item != 'Todos':
         df = df[df['Ítem'] == filtro_item]
     
     # ----------------------------------------------------
-    # FILTRO POR RANGO DE FECHA (Mejora 6)
+    # FILTRO POR RANGO DE FECHA
     # ----------------------------------------------------
     
-    # Nota: min_date/max_date ahora se calculan sobre el DataFrame ya filtrado por Lugar/Ítem
-    # Esto asegura que el selector de fecha no muestre rangos vacíos si un filtro ya se aplicó.
     if df.empty:
         st.warning("No hay datos disponibles para la combinación de Lugar/Ítem seleccionada.")
         st.stop()
@@ -281,7 +276,7 @@ if not df.empty:
         st.warning("No hay datos registrados en el rango de fechas seleccionado.")
         st.stop()
         
-    # Usamos el DataFrame doblemente filtrado para el resto de los cálculos
+    # Usamos el DataFrame filtrado para todos los cálculos
     df = df_filtrado
     
     # ----------------------------------------------------
@@ -294,10 +289,10 @@ if not df.empty:
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     
     total_liquido_historico = df["Total Recibido"].sum()
-    col_kpi1.metric("Total Líquido Histórico", format_currency(total_liquido_historico))
+    col_kpi1.metric("Total Líquido", format_currency(total_liquido_historico))
     
     total_bruto_historico = df["Valor Bruto"].sum()
-    col_kpi2.metric("Total Bruto Histórico", format_currency(total_bruto_historico))
+    col_kpi2.metric("Total Bruto", format_currency(total_bruto_historico))
     
     total_atenciones_historico = len(df)
     col_kpi3.metric("Total de Atenciones", f"{total_atenciones_historico:,}".replace(",", "."))
@@ -323,7 +318,6 @@ if not df.empty:
     
     # Análisis Mensual
     st.subheader("📈 Evolución Mensual de Ingresos Líquidos")
-    # Nota: Si el filtro de Lugar/Ítem se aplica, la gráfica muestra la evolución SOLO de ese subconjunto
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
@@ -343,10 +337,57 @@ if not df.empty:
     fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
     st.plotly_chart(fig_lugar, use_container_width=True)
 
-    # Vista previa y Descarga de datos
-    st.header("📋 Vista Previa de Datos Crudos")
-    st.dataframe(df, use_container_width=True)
+    # ----------------------------------------------------
+    # VISTA PREVIA Y ELIMINACIÓN DE DATOS (NUEVA FUNCIÓN)
+    # ----------------------------------------------------
+    st.header("📋 Gestión de Atenciones Registradas")
+
+    # Usamos el índice original para referenciar la eliminación en session_state.atenciones_df
+    df_display = df.copy() 
     
+    st.subheader("Atenciones Registradas (Haga click en '🗑️' para eliminar)")
+
+    # Títulos de columna
+    cols_title = st.columns([0.15, 0.15, 0.15, 0.35, 0.1])
+    cols_title[0].write("**Fecha**")
+    cols_title[1].write("**Lugar**")
+    cols_title[2].write("**Líquido**")
+    cols_title[3].write("**Paciente**")
+    cols_title[4].write("**Acción**")
+    
+    st.markdown("---") 
+
+    # Iterar sobre las filas y crear el botón de eliminación
+    # Usamos .iterrows() sobre el DF filtrado, pero el índice que obtenemos es el índice original
+    for index, row in df_display.iterrows():
+        
+        # Crear una estructura de columnas para cada fila
+        cols = st.columns([0.15, 0.15, 0.15, 0.35, 0.1])
+        
+        # Mostrar la información clave de la fila
+        cols[0].write(row['Fecha'].strftime('%Y-%m-%d'))
+        cols[1].write(row['Lugar'])
+        cols[2].write(f"${row['Total Recibido']:,.0f}".replace(",", "."))
+        cols[3].write(row['Paciente'])
+        
+        # Botón de eliminación. La clave única (key=f"delete_{index}") es crucial
+        if cols[4].button("🗑️", key=f"delete_{index}", help="Eliminar esta atención de forma permanente"):
+            
+            # Eliminar la fila del DataFrame original (que está en session_state)
+            st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index)
+            
+            # Guardar el DataFrame actualizado al disco
+            # Asegúrese de que la función save_data esté definida en su Sección 2
+            save_data(st.session_state.atenciones_df)
+            
+            st.success(f"Atención del paciente {row['Paciente']} eliminada. Recargando...")
+            
+            # Forzar la recarga de la aplicación para actualizar la tabla y los KPIs
+            st.rerun()
+
+    st.markdown("---") 
+    
+    # Botón de Descarga
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="⬇️ Descargar Datos Filtrados (CSV)",
