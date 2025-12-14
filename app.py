@@ -57,7 +57,7 @@ conn = st.connection(
 def load_data_from_db():
     """Carga todos los datos de la tabla 'atenciones'."""
     try:
-        df = conn.query('SELECT * FROM atenciones ORDER BY fecha DESC;', ttl=600)
+        df = conn.query('SELECT * FROM "atenciones" ORDER BY fecha DESC;', ttl=600)
         # Asegura que las columnas numéricas sean float para los cálculos
         cols_to_numeric = ["valor_bruto", "desc_fijo_lugar", "desc_tarjeta", "desc_adicional", "total_recibido"]
         for col in cols_to_numeric:
