@@ -454,7 +454,7 @@ else:
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN DE CALLBACK)
+# 5. MODAL DE EDICIÓN DE REGISTRO (CÁLCULO EN TIEMPO REAL)
 # ===============================================
 
 if st.session_state.edit_index is not None:
@@ -476,7 +476,7 @@ if st.session_state.edit_index is not None:
         
         st.subheader("Modificar Datos de la Atención")
         
-        # 1. Widgets FUERA DEL FORMULARIO (Lugar e Ítem, para manejar la dependencia)
+        # 1. Widgets FUERA DEL FORMULARIO (Dependencia y Campos necesarios para el cálculo en tiempo real)
         col_edit1_out, col_edit2_out = st.columns(2)
         
         with col_edit1_out:
@@ -494,21 +494,18 @@ if st.session_state.edit_index is not None:
                 "📍 Lugar de Atención", 
                 options=LUGARES, 
                 index=lugar_idx, 
-                key="edit_lugar", # Clave para el valor del widget
-                on_change=update_edited_lugar # EL CALLBACK AHORA FUNCIONA
+                key="edit_lugar", 
+                on_change=update_edited_lugar 
             )
 
             # WIDGET ÍTEM DEPENDIENTE DEL ESTADO INTERMEDIO
             items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
             
-            # Si el lugar cambió, el ítem debe resetearse al primero
             try:
-                # Si el ítem original existe en la nueva lista de opciones
                 current_item_index = items_edit.index(data_to_edit['Ítem'])
             except ValueError:
                 current_item_index = 0
             
-            # Usar una clave basada en el lugar actual para asegurar que se re-renderice
             item_key = f"edit_item_for_{st.session_state.edited_lugar_state}" 
             
             edited_item_display = st.selectbox(
@@ -526,58 +523,73 @@ if st.session_state.edit_index is not None:
                 pago_idx = 0
             edited_metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
         
-        # 2. Widgets DENTRO DEL FORMULARIO (Campos numéricos y botones de acción)
-        with st.form("edit_form", clear_on_submit=False):
-            
-            # Renderizar la segunda columna DENTRO del form (los widgets ya se definieron arriba)
-            with col_edit2_out: 
-                edited_valor_bruto = st.number_input(
-                    "💰 **Valor Bruto (Manual)**", 
-                    min_value=0, 
-                    value=int(data_to_edit['Valor Bruto']), 
-                    step=1000,
-                    key="edit_valor_bruto"
-                )
-                edited_desc_adicional_manual = st.number_input(
-                    "✂️ **Descuento Adicional/Ajuste**", 
-                    min_value=-500000, 
-                    value=int(data_to_edit['Desc. Adicional']), 
-                    step=1000,
-                    key="edit_desc_adic"
-                )
-                
-                # Recalcular el total líquido: USAMOS LOS VALORES DE LAS CLAVES DEL WIDGET (st.session_state.clave)
-                recalculo = calcular_ingreso(
-                    st.session_state.edit_lugar, 
-                    st.session_state[item_key], 
-                    st.session_state.edit_metodo, 
-                    st.session_state.edit_desc_adic, 
-                    fecha_atencion=st.session_state.edit_fecha, 
-                    valor_bruto_override=st.session_state.edit_valor_bruto 
-                )
-                
-                st.markdown("###")
-                st.metric(
-                    label="## NUEVO TOTAL LÍQUIDO", 
-                    value=f"${recalculo['total_recibido']:,.0f}".replace(",", ".")
-                )
+        with col_edit2_out: 
+            edited_valor_bruto = st.number_input(
+                "💰 **Valor Bruto (Manual)**", 
+                min_value=0, 
+                value=int(data_to_edit['Valor Bruto']), 
+                step=1000,
+                key="edit_valor_bruto"
+            )
+            edited_desc_adicional_manual = st.number_input(
+                "✂️ **Descuento Adicional/Ajuste**", 
+                min_value=-500000, 
+                value=int(data_to_edit['Desc. Adicional']), 
+                step=1000,
+                key="edit_desc_adic"
+            )
 
+            # ------------------------------------------------------------------
+            # *** CÁLCULO Y DISPLAY DE RESULTADOS EN TIEMPO REAL (FUERA DEL FORM) ***
+            # ------------------------------------------------------------------
+            
+            # Recalcular el total líquido: USAMOS LOS VALORES ACTUALES DEL st.session_state
+            recalculo = calcular_ingreso(
+                st.session_state.edit_lugar, 
+                st.session_state[item_key], 
+                st.session_state.edit_metodo, 
+                st.session_state.edit_desc_adic, 
+                fecha_atencion=st.session_state.edit_fecha, 
+                valor_bruto_override=st.session_state.edit_valor_bruto 
+            )
+
+            # Mostrar Descuentos (CORREGIDO)
+            st.warning(
+                f"**Desc. Tarjeta ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** ${recalculo['desc_tarjeta']:,.0f}".replace(",", ".")
+            )
+            
+            desc_lugar_label = f"Desc. Fijo Lugar ({st.session_state.edit_lugar})"
+            if st.session_state.edit_lugar == 'AMAR AUSTRAL':
+                dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
+                desc_lugar_label += f" ({dias_semana.get(st.session_state.edit_fecha.weekday())})" 
+
+            st.info(f"**{desc_lugar_label}:** ${recalculo['desc_fijo_lugar']:,.0f}".replace(",", "."))
+            
+            st.markdown("###")
+            st.metric(
+                label="## NUEVO TOTAL LÍQUIDO", 
+                value=f"${recalculo['total_recibido']:,.0f}".replace(",", ".")
+            )
+            # ------------------------------------------------------------------
+        
+        # 2. BOTONES DE ACCIÓN DENTRO DEL FORMULARIO
+        with st.form("edit_form", clear_on_submit=False):
             col_btn1, col_btn2 = st.columns([1, 1])
 
-            # Botón de Guardar (DENTRO DEL FORMULARIO)
+            # Botón de Guardar
             if col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary"):
-                # 3. Guardar los cambios (Usamos los valores finales del state)
+                # 3. Guardar los cambios (Usamos los valores finales del state y el recalculo ya hecho)
                 st.session_state.atenciones_df.loc[index_to_edit] = {
                     "Fecha": st.session_state.edit_fecha.strftime('%Y-%m-%d'), 
                     "Lugar": st.session_state.edit_lugar, 
                     "Ítem": st.session_state[item_key], 
                     "Paciente": st.session_state.edit_paciente, 
                     "Método Pago": st.session_state.edit_metodo,
-                    "Valor Bruto": recalculo['valor_bruto'],
-                    "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'],
-                    "Desc. Tarjeta": recalculo['desc_tarjeta'],
+                    "Valor Bruto": recalculo['valor_bruto'], # Usamos el valor del recalculo
+                    "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'], # Usamos el valor del recalculo
+                    "Desc. Tarjeta": recalculo['desc_tarjeta'], # Usamos el valor del recalculo
                     "Desc. Adicional": st.session_state.edit_desc_adic,
-                    "Total Recibido": recalculo['total_recibido']
+                    "Total Recibido": recalculo['total_recibido'] # Usamos el valor del recalculo
                 }
                 
                 save_data(st.session_state.atenciones_df)
@@ -586,7 +598,7 @@ if st.session_state.edit_index is not None:
                 st.success(f"🎉 Atención para {st.session_state.edit_paciente} actualizada exitosamente. Recargando...")
                 st.rerun()
                 
-            # Botón de Cancelar (DENTRO DEL FORMULARIO)
+            # Botón de Cancelar
             if col_btn2.form_submit_button("❌ Cancelar Edición"):
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
