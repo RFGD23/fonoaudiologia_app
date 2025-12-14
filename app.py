@@ -120,7 +120,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (CORREGIDO PARA SER TRANSPARENTE Y DINÁMICO) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (DINÁMICO Y TRANSPARENTE) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -139,21 +139,29 @@ def set_background(png_file):
         return
         
     # *************************************************************************
-    # CSS INYECTADO: HACE LOS CONTENEDORES INTERNOS SEMITRANSPARENTES
+    # CSS INYECTADO: AJUSTE DE FONDO DINÁMICO Y TRANSPARENCIA
     # *************************************************************************
     page_bg_img = f'''
     <style>
-    /* 1. Fondo de la Aplicación (con scroll) */
-    .stApp {{
+    /* 1. Fondo de la Aplicación (DINÁMICO: se mueve con el scroll) */
+    [data-testid="stAppViewBlock"] {{
         background-image: url("data:image/png;base64,{bin_str}");
-        background-size: cover; /* o 'repeat' si es un patrón */
-        background-attachment: scroll; /* La imagen se mueve con el contenido */
+        background-size: cover; 
+        background-attachment: scroll; /* ¡Fondo se mueve con el scroll! */
+        background-repeat: no-repeat;
+        min-height: 100vh;
+    }}
+    
+    /* Aseguramos que el contenedor principal de Streamlit sea transparente */
+    .stApp {{
+        background-color: transparent !important; 
     }}
 
-    /* 2. HACE LOS CONTENEDORES PRINCIPALES Y WIDGETS SEMITRANSPARENTES */
-    /* st.Expander, st.tabs, y el contenedor principal de los inputs */
-    .css-1r6dm1 {{ 
-        background-color: rgba(0, 0, 0, 0.4); /* Fondo ligeramente oscuro para contraste */
+
+    /* 2. HACE LOS CONTENEDORES PRINCIPALES Y EXPANDERS SEMITRANSPARENTES */
+    /* st.Expander y el contenedor principal (main content block) */
+    .css-1r6dm1, .streamlit-expander {{ 
+        background-color: rgba(0, 0, 0, 0.4); /* Fondo oscuro semitransparente */
         border-radius: 10px;
         padding: 10px;
     }} 
@@ -161,6 +169,7 @@ def set_background(png_file):
     /* Inputs (Text, Selectbox, Date, Number) */
     .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child {{
         background-color: rgba(255, 255, 255, 0.1); /* Fondo muy claro y transparente para los inputs */
+        border-radius: 5px;
     }}
     
     /* 3. Ajuste de las Métricas (KPIs) y Bloques */
