@@ -51,7 +51,7 @@ conn = st.connection(
     # USUARIO COMPLETO (Pooler requiere la referencia del proyecto):
     username="postgres.emnqztaxybhbmkuryhem", 
     # CONTRASEÑA REAL:
-    password="[DomiLeo1702]" # Asegúrate de que esta sea correcta
+    password="DomiLeo1702" # Asegúrate de que esta sea correcta
 )
 @st.cache_data(ttl=3600) # Carga los datos y los guarda en caché por 1 hora
 def load_data_from_db():
