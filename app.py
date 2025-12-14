@@ -3,41 +3,36 @@ import pandas as pd
 from datetime import date
 import os
 import io
-import plotly.express as px # Importar Plotly para el gráfico de torta
+import plotly.express as px 
+import json # <-- NUEVA LIBRERÍA
 
 # ===============================================
 # CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
-# --- Bases de Datos Maestras (Hardcodeado - PRÓXIMO PASO: JSON) ---
-PRECIOS_BASE = {
-    ('LIBEDUL', 'PACIENTE'): 4500,('LIBEDUL', 'VISITA ESTABLECIMIENTO'): 20000,('LIBEDUL', 'ADOS2'): 30000, ('LIBEDUL', 'DUPLA'): 7000, 
-    ('LIBEDUL', 'ADIR+ADOS2'): 37500, ('LIBEDUL', 'LAVADO OIDO'): 6000,
-    ('AMAR AUSTRAL', 'PACIENTE'): 30000,('AMAR AUSTRAL', 'DUPLA'): 25000,('AMAR AUSTRAL', 'LAVADO OIDO'): 20000,('AMAR AUSTRAL', 'VISITA ESTABLECIMIENTO'): 35000,('AMAR AUSTRAL', 'FALTO'): 0, ('AMAR AUSTRAL', 'ADIR+ADOS2'): 100000,
-    ('CPM', 'PACIENTE'): 30000, ('CPM', 'HOSPITALIZADO'): 30000, ('CPM', 'ADIR+ADOS2'): 190000,
-    ('DOMICILIO', 'PACIENTE'): 30000, ('DOMICILIO', 'LAVADO OIDO'): 25000,
-    ('ALERCE', '5 SABADOS'): 25000, ('ALERCE', '4 SABADOS'): 31250,
-}
-# --- Reglas de Descuento (Fijas por Lugar) ---
-DESCUENTOS_LUGAR = {
-    'LIBEDUL': 0, 
-    'ALERCE': 0, 
-    'DOMICILIO': 0, 
-    'CPM': 14610, 
-}
-
-# --- Reglas de Comisión por Método de Pago ---
-COMISIONES_PAGO = {
-    'EFECTIVO': 0.00,
-    'TRANSFERENCIA': 0.00,
-    'TARJETA': 0.05, # 5% de comisión.
-    'AMAR AUSTRAL': 0.05, # 5% de comisión. Independiente de la forma de pago
-}
-
-# Variables de la aplicación
-LUGARES = sorted(list(set(l for l, i in PRECIOS_BASE.keys())))
-METODOS_PAGO = list(COMISIONES_PAGO.keys())
 DATA_FILE = 'atenciones_registradas.csv'
+
+def load_config(filename):
+    """Carga la configuración desde un archivo JSON."""
+    try:
+        with open(filename, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}. Asegúrate de que existe en la carpeta raíz.")
+        return {} # Retorna un diccionario vacío para evitar fallos
+    except json.JSONDecodeError:
+        st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
+        return {}
+
+# --- Cargar Variables Globales desde JSON ---
+PRECIOS_BASE_CONFIG = load_config('precios_base.json')
+DESCUENTOS_LUGAR = load_config('descuentos_lugar.json')
+COMISIONES_PAGO = load_config('comisiones_pago.json')
+
+# Variables de la aplicación (derivadas de la configuración)
+LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys()))
+METODOS_PAGO = list(COMISIONES_PAGO.keys())
+
 
 # ===============================================
 # 2. FUNCIONES DE PERSISTENCIA Y CÁLCULO
@@ -45,17 +40,10 @@ DATA_FILE = 'atenciones_registradas.csv'
 
 @st.cache_data
 def load_data():
-    """
-    Carga los datos del archivo CSV de forma segura. 
-    Usa errors='coerce' para convertir a NaT cualquier valor de 'Fecha' 
-    que no sea válido, evitando el ValueError en la conversión.
-    """
+    """Carga los datos del archivo CSV de forma segura."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
-        
-        # Corrección de fecha con manejo de errores (Mejora 1)
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
-        
         return df
     else:
         return pd.DataFrame(columns=[
@@ -69,11 +57,12 @@ def save_data(df):
     df.to_csv(DATA_FILE, index=False)
 
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
-    """
-    Calcula el ingreso final líquido basado en las reglas del negocio, 
-    incluyendo la lógica condicional por día para AMAR AUSTRAL.
-    """
-    valor_bruto = valor_bruto_override if valor_bruto_override is not None else PRECIOS_BASE.get((lugar, item), 0)
+    """Calcula el ingreso final líquido."""
+    
+    # *** CAMBIO CLAVE: Acceso anidado a precios ***
+    # Accedemos a PRECIOS_BASE_CONFIG[Lugar][Ítem] de forma segura.
+    precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
+    valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
     # 1. Descuento Fijo por Lugar (Base)
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
@@ -86,7 +75,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             desc_fijo_lugar = 8000
         elif dia_semana == 4:  # Viernes
             desc_fijo_lugar = 6500
-        # Si es otro día, el descuento se mantiene en 0 (o el valor inicial)
 
     # 2. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
@@ -124,20 +112,19 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        # Inputs para el registro
         fecha = st.date_input("🗓️ Fecha de Atención", date.today())
         lugar_seleccionado = st.selectbox("📍 Lugar de Atención", options=LUGARES)
         
-        # Filtrado inteligente de ítems
-        items_filtrados = [item for (lugar, item), precio in PRECIOS_BASE.items() if lugar == lugar_seleccionado]
+        # *** CAMBIO CLAVE: Filtrado inteligente de ítems usando la nueva estructura anidada ***
+        items_filtrados = list(PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).keys())
         item_seleccionado = st.selectbox("📋 Ítem/Procedimiento", options=items_filtrados)
         
         paciente = st.text_input("👤 Nombre del Paciente/Asociado", "")
         metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO)
 
     with col2:
-        # Lógica de Cálculo
-        precio_base = PRECIOS_BASE.get((lugar_seleccionado, item_seleccionado), 0)
+        # *** CAMBIO CLAVE: Obtener el precio base con la nueva estructura ***
+        precio_base = PRECIOS_BASE_CONFIG.get(lugar_seleccionado, {}).get(item_seleccionado, 0)
         
         valor_bruto_input = st.number_input(
             "💰 **Valor Bruto (Sistema)**", 
@@ -199,29 +186,28 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                     "Total Recibido": resultados['total_recibido']
                 }
                 
-                # Agregar al DataFrame y guardar
                 st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                 save_data(st.session_state.atenciones_df)
                 st.success(f"🎉 Atención registrada para {paciente} por ${resultados['total_recibido']:,.0f}.".replace(",", "."))
                 st.balloons()
 
 # ===============================================
-# 4. DASHBOARD DE RESUMEN (CON MEJORAS)
+# 4. DASHBOARD DE RESUMEN
 # ===============================================
+
+# ... (El resto del código de la sección 4 es idéntico a la versión anterior y es estable)
+# ...
 st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
 
 df = st.session_state.atenciones_df
 
 if not df.empty:
-    # Asegura que la columna es datetime (solo por robustez, load_data ya lo hace)
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') 
 
-    # Función para formato de moneda (repetida por seguridad)
     def format_currency(value):
         return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
-    # --- METRICAS PRINCIPALES (Mejora 3) ---
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     
     total_liquido_historico = df["Total Recibido"].sum()
@@ -252,14 +238,12 @@ if not df.empty:
 
     st.markdown("---")
     
-    # Análisis Mensual
     st.subheader("📈 Evolución Mensual de Ingresos Líquidos")
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
     st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#4c78a8")
 
-    # Análisis por Lugar (Mejora 2 - Plotly)
     st.subheader("🥧 Distribución de Ingresos por Centro de Atención")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
     
@@ -273,7 +257,6 @@ if not df.empty:
     fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
     st.plotly_chart(fig_lugar, use_container_width=True)
 
-    # Vista previa y Descarga de datos
     st.header("📋 Vista Previa de Datos Crudos")
     st.dataframe(df, use_container_width=True)
     
