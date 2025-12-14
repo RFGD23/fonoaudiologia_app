@@ -5,6 +5,7 @@ import os
 import json 
 import time 
 import plotly.express as px
+import numpy as np # Necesario para manejar NaN
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -38,7 +39,6 @@ def load_config(filename):
         st.info(f"Archivo de configuración '{filename}' no encontrado. Creando uno por defecto.")
         
         # --- Configuración por defecto para inicialización ---
-        # NOTA: Las claves por defecto están en MAYÚSCULAS para consistencia.
         if filename == PRECIOS_FILE:
             default_data = {
                 'ALERCE': {'Item1': 30000, 'Item2': 40000}, 
@@ -75,21 +75,13 @@ def re_load_global_config():
 
     # --- Procesar y Forzar MAYÚSCULAS para asegurar consistencia ---
     
-    # 1. Precios Base (Clave principal: Lugar)
     PRECIOS_BASE_CONFIG = {k.upper(): v for k, v in precios_raw.items()}
-
-    # 2. Descuentos Fijos (Clave principal: Lugar)
     DESCUENTOS_LUGAR = {k.upper(): v for k, v in descuentos_raw.items()}
-
-    # 3. Comisiones de Pago (Clave principal: Método de Pago)
     COMISIONES_PAGO = {k.upper(): v for k, v in comisiones_raw.items()}
 
-    # 4. Reglas (Clave principal: Lugar, Claves anidadas: Día)
     DESCUENTOS_REGLAS = {}
     for lugar, reglas in reglas_raw.items():
-        # Aseguramos el lugar en mayúsculas
         lugar_upper = lugar.upper()
-        # Aseguramos el día de la semana en mayúsculas
         reglas_upper = {dia.upper(): monto for dia, monto in reglas.items()}
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
@@ -107,7 +99,7 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 # 2. FUNCIONES DE PERSISTENCIA, CÁLCULO Y ESTILO
 # ===============================================
 
-@st.cache_data
+# Función de carga de datos SIN CACHE (para solucionar problemas de persistencia)
 def load_data():
     """Carga los datos del archivo CSV de forma segura."""
     if os.path.exists(DATA_FILE):
@@ -191,13 +183,10 @@ def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
     """
-    # Usamos upper() para la búsqueda en la configuración
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
     
-    # Obtener la lista de ítems del nuevo lugar
     items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
 
-    # --- Lógica 1: Ajustar el Ítem si el Lugar cambia ---
     current_item = st.session_state.get('form_item')
     
     if current_item not in items_disponibles:
@@ -212,15 +201,12 @@ def update_price_from_item_or_lugar():
     else:
         item_calc_for_price = current_item
         
-    # --- Lógica 2: Calcular el nuevo precio base ---
-    
     if not lugar_key_current or not item_calc_for_price:
         st.session_state.form_valor_bruto = 0
         return
         
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
     
-    # 3. Establecer el nuevo valor en el Session State
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
     st.session_state.form_desc_adic = 0
 
@@ -264,6 +250,17 @@ def format_currency(value):
          value = 0
     return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def sanitize_number_input(value):
+    """Convierte un valor de input de tabla (que puede ser NaN o string) a int."""
+    if pd.isna(value) or value is None:
+        return 0
+    try:
+        # Intenta convertir a int directamente (maneja floats como 7000.0 -> 7000)
+        return int(float(value))
+    except (ValueError, TypeError):
+        return 0 # Devuelve 0 si la conversión falla
+
+
 # ===============================================
 # 3. INTERFAZ DE USUARIO (FRONTEND)
 # ===============================================
@@ -280,11 +277,12 @@ st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
 # --- Herramientas de Mantenimiento ---
-if st.sidebar.button("🧹 Limpiar Cenicienta (Caché)", type="secondary"):
+if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondary"):
     st.cache_data.clear() 
     st.cache_resource.clear() 
-    re_load_global_config() # Recargar la configuración después de limpiar el caché
-    st.success("Caché y configuración limpiadas. ¡La magia continúa!")
+    re_load_global_config() 
+    st.session_state.atenciones_df = load_data() # Forzar recarga de datos
+    st.success("Caché, Configuración y Datos Recargados. ¡La magia continúa!")
     st.rerun() 
 
 st.sidebar.markdown("---") 
@@ -312,13 +310,13 @@ with tab_registro:
     
     # 1. Definir valores iniciales para los Selectboxes y Number Inputs
     
-    # NOTA: Los selectbox options están en MAYÚSCULAS, por lo que el st.session_state.form_lugar será la clave en MAYÚSCULAS.
+    # El valor del SelectBox se guarda en MAYÚSCULAS (por LUGARES)
     lugar_key_initial = LUGARES[0] if LUGARES else ''
     
     if 'form_lugar' not in st.session_state:
         st.session_state.form_lugar = lugar_key_initial
     
-    current_lugar_value_upper = st.session_state.form_lugar.upper()
+    current_lugar_value_upper = st.session_state.form_lugar # Ya está en MAYÚSCULAS
     items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
     
     item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
@@ -355,7 +353,7 @@ with tab_registro:
     
     # 2. SELECTBOX ÍTEM
     with col_reactivo_2:
-        lugar_key_current = st.session_state.form_lugar.upper()
+        lugar_key_current = st.session_state.form_lugar # Ya está en MAYÚSCULAS
         items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
         
         item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
@@ -416,9 +414,9 @@ with tab_registro:
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
                 
-                # Ejecutar el cálculo central en tiempo real. Se pasa el lugar tal como está en el state (MAYÚSCULAS)
+                # Ejecutar el cálculo central en tiempo real. 
                 resultados = calcular_ingreso(
-                    st.session_state.form_lugar, # Ya está en MAYÚSCULAS por el SelectBox
+                    st.session_state.form_lugar, 
                     st.session_state.form_item,              
                     st.session_state.form_metodo_pago,
                     st.session_state.form_desc_adic,  
@@ -428,25 +426,23 @@ with tab_registro:
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
-                # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO ---
-                current_lugar_upper = st.session_state.form_lugar # Ya está en MAYÚSCULAS
+                # --- LÓGICA DE ETIQUETADO DEL TRIBUTO ---
+                current_lugar_upper = st.session_state.form_lugar 
                 current_day_name = DIAS_SEMANA[st.session_state.form_fecha_form.weekday()]
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
                 if current_lugar_upper in DESCUENTOS_REGLAS:
-                     # Comprobar si hay una regla específica para el día actual en este lugar
+                     # Buscar regla por el día en MAYÚSCULAS
                      if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
                          desc_lugar_label += f" (Regla: {current_day_name})"
                          is_rule_applied = True
 
-                # Si no se aplicó regla especial, y el descuento base es mayor a cero, indicar que es el base.
+                # Si no se aplicó regla especial, y hay un descuento base, indicar que es el base.
                 if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
                      desc_lugar_label += " (Base)"
                 
-                # Muestra el resultado de la función de cálculo
                 st.info(f"**{desc_lugar_label}:** {format_currency(resultados['desc_fijo_lugar'])}")
-                # --- FIN DE LÓGICA CORREGIDA ---
                 
                 st.markdown("###")
                 st.success(
@@ -464,7 +460,7 @@ with tab_registro:
                 if st.session_state.form_paciente == "":
                     st.error("Por favor, ingresa el nombre del paciente.")
                 else:
-                    # 1. Recalculo final (usando los valores finales del state)
+                    # 1. Recalculo final 
                     resultados_finales = calcular_ingreso(
                         st.session_state.form_lugar, 
                         st.session_state.form_item, 
@@ -878,7 +874,7 @@ with tab_dashboard:
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** {format_currency(resultados_edit['desc_tarjeta'])}")
                 
                 # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO EN EDICIÓN ---
-                current_lugar_upper = st.session_state.edit_lugar # Ya está en MAYÚSCULAS
+                current_lugar_upper = st.session_state.edit_lugar 
                 current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
@@ -982,12 +978,12 @@ with tab_config:
 
         if st.button("💾 Guardar Precios Base", type="primary", key="save_precios"):
             try:
-                # Revertir el DataFrame a la estructura de diccionario anidado
+                # Revertir el DataFrame a la estructura de diccionario anidado, SANITIZANDO EL VALOR
                 new_precios_config = {}
                 for _, row in edited_df_precios.iterrows():
-                    lugar = str(row['Lugar']).upper() # Guardar en MAYÚSCULAS
+                    lugar = str(row['Lugar']).upper() 
                     item = str(row['Ítem'])
-                    valor = int(row['Valor Bruto'])
+                    valor = sanitize_number_input(row['Valor Bruto']) # <-- SANITIZACIÓN CLAVE
                     
                     if lugar and item:
                         if lugar not in new_precios_config:
@@ -996,14 +992,14 @@ with tab_config:
                 
                 save_config(new_precios_config, PRECIOS_FILE)
                 
-                # <<< MEJORA DE USABILIDAD: Recarga Inmediata y Rerun >>>
+                # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Precios base actualizados correctamente.")
                 time.sleep(1)
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Error al guardar: Asegúrate de que los campos Lugar e Ítem no estén vacíos y el Valor Bruto sea un número. Detalle: {e}")
+                st.error(f"Error al guardar: Asegúrate de que los campos Lugar e Ítem no estén vacíos. Detalle: {e}")
 
     st.markdown("---")
 
@@ -1040,14 +1036,14 @@ with tab_config:
             try:
                 new_descuentos_config = {}
                 for _, row in edited_df_descuentos.iterrows():
-                    lugar = str(row['Lugar']).upper() # Guardar en MAYÚSCULAS
-                    valor = int(row['Desc. Fijo Base'])
+                    lugar = str(row['Lugar']).upper() 
+                    valor = sanitize_number_input(row['Desc. Fijo Base']) # <-- SANITIZACIÓN CLAVE
                     if lugar:
                         new_descuentos_config[lugar] = valor
                 
                 save_config(new_descuentos_config, DESCUENTOS_FILE)
                 
-                # <<< MEJORA DE USABILIDAD: Recarga Inmediata y Rerun >>>
+                # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Descuentos fijos actualizados correctamente.")
                 time.sleep(1)
@@ -1093,9 +1089,9 @@ with tab_config:
             try:
                 new_reglas_config = {}
                 for _, row in edited_df_reglas.iterrows():
-                    lugar = str(row['Lugar']).upper() # Guardar Lugar en MAYÚSCULAS
-                    dia = str(row['Día']).upper() # Guardar Día en MAYÚSCULAS
-                    monto = int(row['Descuento Regla'])
+                    lugar = str(row['Lugar']).upper() 
+                    dia = str(row['Día']).upper() 
+                    monto = sanitize_number_input(row['Descuento Regla']) # <-- SANITIZACIÓN CLAVE
                     
                     if lugar and dia:
                         if lugar not in new_reglas_config:
@@ -1104,7 +1100,7 @@ with tab_config:
                         
                 save_config(new_reglas_config, REGLAS_FILE)
                 
-                # <<< MEJORA DE USABILIDAD: Recarga Inmediata y Rerun >>>
+                # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Reglas de descuento por día actualizadas.")
                 time.sleep(1)
@@ -1149,14 +1145,17 @@ with tab_config:
             try:
                 new_comisiones_config = {}
                 for _, row in edited_df_comisiones.iterrows():
-                    metodo = str(row['Método de Pago']).upper() # Guardar en MAYÚSCULAS
-                    comision = float(row['Comisión (%)'])
+                    metodo = str(row['Método de Pago']).upper() 
+                    
+                    # Usamos np.nan_to_num para asegurar que los NaN se traten como 0.0
+                    comision = float(np.nan_to_num(row['Comisión (%)'])) 
+                    
                     if metodo:
                         new_comisiones_config[metodo] = comision
                 
                 save_config(new_comisiones_config, COMISIONES_FILE)
                 
-                # <<< MEJORA DE USABILIDAD: Recarga Inmediata y Rerun >>>
+                # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Comisiones de pago actualizadas correctamente.")
                 time.sleep(1)
