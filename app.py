@@ -39,7 +39,11 @@ def load_config(filename):
         
         # --- Configuración por defecto para inicialización ---
         if filename == PRECIOS_FILE:
-            default_data = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 30000, '5 SABADOS': 35000}}
+            # Añadido un ejemplo de configuración por defecto más robusto
+            default_data = {
+                'ALERCE': {'Item1': 30000, 'Item2': 40000}, 
+                'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 25000, '5 SABADOS': 30000}
+            }
         elif filename == DESCUENTOS_FILE:
             default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
         elif filename == COMISIONES_FILE:
@@ -211,11 +215,13 @@ with tab_registro:
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' para agregar datos iniciales.")
     
-    # --- LÓGICA DE INICIALIZACIÓN ROBUSTA DE SELECTBOXES ---
+    # --- LÓGICA DE INICIALIZACIÓN Y DETECCIÓN DE CAMBIOS (CLAVE PARA LA CORRECCIÓN) ---
     lugar_key_initial = LUGARES[0] if LUGARES else ''
     
+    # Inicializar form_lugar y lugar_anterior
     if 'form_lugar' not in st.session_state:
         st.session_state.form_lugar = lugar_key_initial
+        st.session_state.lugar_anterior = lugar_key_initial 
         
     current_lugar_value = st.session_state.form_lugar
     current_lugar_value_upper = current_lugar_value.upper()
@@ -223,8 +229,31 @@ with tab_registro:
     items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
     item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
     
+    # Inicializar form_item y item_anterior
     if 'form_item' not in st.session_state:
         st.session_state.form_item = item_key_initial
+        st.session_state.item_anterior = item_key_initial 
+    
+    
+    # --- CÁLCULO DE PRECIO SUGERIDO ---
+    item_calc_for_price = st.session_state.form_item
+    lugar_key_current = st.session_state.form_lugar.upper()
+    precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
+    
+    
+    # 🚨 LÓGICA DE RESETEO DEL VALOR BRUTO (CORRECCIÓN)
+    # Si el Lugar o el Ítem han cambiado, forzamos que el valor bruto tome el valor sugerido.
+    
+    lugar_cambio = st.session_state.lugar_anterior != st.session_state.form_lugar
+    item_cambio = st.session_state.item_anterior != st.session_state.form_item
+    
+    if lugar_cambio or item_cambio or 'form_valor_bruto' not in st.session_state:
+        # Forzar la actualización del valor bruto en Session State al precio sugerido
+        st.session_state.form_valor_bruto = int(precio_base_sugerido)
+        
+    # Actualizar los valores "anteriores" para la siguiente ejecución
+    st.session_state.lugar_anterior = st.session_state.form_lugar
+    st.session_state.item_anterior = st.session_state.form_item
         
     
     with st.form("registro_atencion_form", clear_on_submit=True): 
@@ -253,7 +282,6 @@ with tab_registro:
                                                 index=lugar_index)
                 
                 # 2. SELECTBOX ÍTEM
-                lugar_key_current = st.session_state.form_lugar.upper()
                 items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
                 
                 try:
@@ -266,10 +294,6 @@ with tab_registro:
                                                 key="form_item",
                                                 index=item_index)
                 
-                # --- CÁLCULO DE PRECIO SUGERIDO ACTUALIZADO ---
-                item_calc_for_price = st.session_state.form_item
-                precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
-                
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 
                 try:
@@ -280,12 +304,11 @@ with tab_registro:
 
             with col2:
                 
-                # 3. VALOR BRUTO (CORRECCIÓN IMPLEMENTADA AQUÍ)
+                # 3. VALOR BRUTO (Ahora siempre toma el valor reseteado en Session State)
                 valor_bruto_input = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
-                    # **CLAVE: EL VALUE SIEMPRE TOMA EL PRECIO SUGERIDO**
-                    value=int(precio_base_sugerido), 
+                    value=st.session_state.form_valor_bruto, 
                     step=1000,
                     key="form_valor_bruto" 
                 )
@@ -306,8 +329,7 @@ with tab_registro:
                     st.session_state.form_metodo_pago,
                     st.session_state.form_desc_adic,  
                     fecha_atencion=st.session_state.form_fecha, 
-                    # Asegurar que se use el valor del number_input, que ahora es dinámico
-                    valor_bruto_override=st.session_state.form_valor_bruto 
+                    valor_bruto_override=st.session_state.form_valor_bruto
                 )
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
@@ -710,22 +732,33 @@ with tab_dashboard:
                 # RECALCULAR PRECIO BASE SUGERIDO PARA EL VALOR INICIAL DEL number_input de edición
                 precio_base_sugerido_edit = PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar.upper(), {}).get(st.session_state.edit_item, 0)
                 
-                # --- MANEJO DEL VALOR BRUTO ---
-                # **CLAVE DE EDICIÓN: Forzamos la actualización solo si el valor en la DB es diferente al sugerido**
-                # (Esto permite mantener un valor editado manualmente, pero lo resetea si se cambia el ítem)
-                if 'edit_valor_bruto' not in st.session_state:
-                    initial_valor_bruto = int(data_to_edit['Valor Bruto'])
-                else:
-                    initial_valor_bruto = st.session_state.edit_valor_bruto
+                # --- MANEJO DEL VALOR BRUTO EN EDICIÓN ---
+                # Detectar si el item/lugar cambió para resetear el valor, manteniendo el valor de la DB si no hay cambio
                 
-                # Si el ítem cambió y el precio sugerido es diferente al valor actual, actualizamos.
-                if initial_valor_bruto != precio_base_sugerido_edit:
-                    initial_valor_bruto = precio_base_sugerido_edit
-                    
+                # Para la edición, es crucial mantener el valor bruto original (data_to_edit['Valor Bruto'])
+                # a menos que el usuario interactúe con el selector.
+                
+                # Usaremos una clave temporal para la edición para guardar el valor original de la DB
+                if 'initial_edit_valor_bruto' not in st.session_state:
+                    st.session_state.initial_edit_valor_bruto = int(data_to_edit['Valor Bruto'])
+                
+                # Si el item o lugar en el selector de edición es diferente a lo que está en la DB
+                # y el valor en el number_input es el valor antiguo de la DB, forzamos la sugerencia.
+                
+                current_edit_valor_bruto = st.session_state.get('edit_valor_bruto', st.session_state.initial_edit_valor_bruto)
+
+                if (edited_item_display != data_to_edit['Ítem'] or edited_lugar_display != data_to_edit['Lugar']) and (current_edit_valor_bruto == st.session_state.initial_edit_valor_bruto):
+                    # El usuario cambió el item o el lugar, y el valor bruto es el valor viejo, entonces sugerimos el nuevo precio base
+                    initial_value_for_input = precio_base_sugerido_edit
+                else:
+                    # El usuario ya editó el valor bruto, o el item/lugar es el mismo, o simplemente mantenemos el valor actual del input
+                    initial_value_for_input = current_edit_valor_bruto
+
+
                 edited_valor_bruto = st.number_input(
                     "💰 **Valor Bruto (Recompensa Manual)**", 
                     min_value=0, 
-                    value=initial_valor_bruto, 
+                    value=int(initial_value_for_input), 
                     step=1000,
                     key="edit_valor_bruto"
                 )
@@ -799,6 +832,7 @@ with tab_dashboard:
                     
                     save_data(st.session_state.atenciones_df)
                     st.session_state.edit_index = None 
+                    if 'initial_edit_valor_bruto' in st.session_state: del st.session_state.initial_edit_valor_bruto
                     st.session_state.edited_lugar_state = None 
                     st.success(f"🎉 Aventura para {st.session_state.edit_paciente} actualizada exitosamente. Recargando el mapa...")
                     time.sleep(0.5) 
@@ -806,6 +840,7 @@ with tab_dashboard:
                     
                 if cancel_button:
                     st.session_state.edit_index = None 
+                    if 'initial_edit_valor_bruto' in st.session_state: del st.session_state.initial_edit_valor_bruto
                     st.session_state.edited_lugar_state = None 
                     st.rerun()
 
