@@ -39,13 +39,12 @@ def load_config(filename):
         
         # --- Configuración por defecto para inicialización ---
         if filename == PRECIOS_FILE:
-            default_data = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000}}
+            default_data = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 30000, '5 SABADOS': 35000}}
         elif filename == DESCUENTOS_FILE:
             default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
         elif filename == COMISIONES_FILE:
             default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
         elif filename == REGLAS_FILE:
-            # Días en MAYÚSCULAS para coincidir con la lista DIAS_SEMANA
             default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}}
         else:
             default_data = {}
@@ -95,7 +94,6 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
-    # Manejo de casos límite si no hay configuración
     if not lugar or not item or not PRECIOS_BASE_CONFIG:
          return {
             'valor_bruto': 0,
@@ -104,7 +102,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             'total_recibido': 0
         }
     
-    # El lugar (lugar_key) ya viene en MAYÚSCULAS desde el formulario de registro
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
@@ -112,16 +109,13 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
     if lugar in DESCUENTOS_REGLAS:
-        # Asegurarse de que fecha_atencion es un objeto date o datetime
         if isinstance(fecha_atencion, pd.Timestamp):
             dia_semana_num = fecha_atencion.weekday()
         elif isinstance(fecha_atencion, date):
             dia_semana_num = fecha_atencion.weekday()
         else:
-            # Si no es un formato válido, usamos la fecha de hoy
             dia_semana_num = date.today().weekday()
             
-        # El nombre del día debe estar en MAYÚSCULAS para coincidir con el JSON
         dia_nombre = DIAS_SEMANA[dia_semana_num].upper()
         
         regla_especial = DESCUENTOS_REGLAS[lugar].get(dia_nombre)
@@ -214,26 +208,21 @@ with tab_registro:
     # --- FORMULARIO DE INGRESO ---
     st.subheader("🎉 Nueva Aventura de Ingreso (Atención)")
     
-    # Manejo de configuración vacía (para no fallar al acceder a LUGARES[0])
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' para agregar datos iniciales.")
-        # No se usa st.stop() aquí para permitir que el usuario navegue a Configuración.
     
-    # --- LÓGICA DE INICIALIZACIÓN ROBUSTA DE SELECTBOXES (CORRECCIÓN CRÍTICA) ---
+    # --- LÓGICA DE INICIALIZACIÓN ROBUSTA DE SELECTBOXES ---
     lugar_key_initial = LUGARES[0] if LUGARES else ''
     
-    # 1. Inicializar form_lugar si no existe
     if 'form_lugar' not in st.session_state:
         st.session_state.form_lugar = lugar_key_initial
         
     current_lugar_value = st.session_state.form_lugar
     current_lugar_value_upper = current_lugar_value.upper()
     
-    # Obtener ítems disponibles para el lugar actual
     items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
     item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
     
-    # 2. Inicializar form_item si no existe
     if 'form_item' not in st.session_state:
         st.session_state.form_item = item_key_initial
         
@@ -267,12 +256,9 @@ with tab_registro:
                 lugar_key_current = st.session_state.form_lugar.upper()
                 items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
                 
-                # Sincronización del ítem seleccionado
                 try:
-                    # Si el ítem actual existe en la nueva lista de ítems del lugar, lo seleccionamos.
                     item_index = items_filtrados_current.index(st.session_state.form_item)
                 except (ValueError, KeyError):
-                    # Si no existe (porque cambiamos de lugar), seleccionamos el primer ítem de la nueva lista.
                     item_index = 0 
                     
                 item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
@@ -280,7 +266,7 @@ with tab_registro:
                                                 key="form_item",
                                                 index=item_index)
                 
-                # --- CÁLCULO DE PRECIO SUGERIDO ---
+                # --- CÁLCULO DE PRECIO SUGERIDO ACTUALIZADO ---
                 item_calc_for_price = st.session_state.form_item
                 precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
                 
@@ -294,10 +280,11 @@ with tab_registro:
 
             with col2:
                 
-                # 3. VALOR BRUTO (Se actualiza con el precio sugerido al cambiar lugar/ítem)
+                # 3. VALOR BRUTO (CORRECCIÓN IMPLEMENTADA AQUÍ)
                 valor_bruto_input = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
+                    # **CLAVE: EL VALUE SIEMPRE TOMA EL PRECIO SUGERIDO**
                     value=int(precio_base_sugerido), 
                     step=1000,
                     key="form_valor_bruto" 
@@ -319,7 +306,8 @@ with tab_registro:
                     st.session_state.form_metodo_pago,
                     st.session_state.form_desc_adic,  
                     fecha_atencion=st.session_state.form_fecha, 
-                    valor_bruto_override=st.session_state.form_valor_bruto
+                    # Asegurar que se use el valor del number_input, que ahora es dinámico
+                    valor_bruto_override=st.session_state.form_valor_bruto 
                 )
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
@@ -719,11 +707,20 @@ with tab_dashboard:
             
             with col_edit2_out: 
                 
+                # RECALCULAR PRECIO BASE SUGERIDO PARA EL VALOR INICIAL DEL number_input de edición
+                precio_base_sugerido_edit = PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar.upper(), {}).get(st.session_state.edit_item, 0)
+                
                 # --- MANEJO DEL VALOR BRUTO ---
+                # **CLAVE DE EDICIÓN: Forzamos la actualización solo si el valor en la DB es diferente al sugerido**
+                # (Esto permite mantener un valor editado manualmente, pero lo resetea si se cambia el ítem)
                 if 'edit_valor_bruto' not in st.session_state:
                     initial_valor_bruto = int(data_to_edit['Valor Bruto'])
                 else:
                     initial_valor_bruto = st.session_state.edit_valor_bruto
+                
+                # Si el ítem cambió y el precio sugerido es diferente al valor actual, actualizamos.
+                if initial_valor_bruto != precio_base_sugerido_edit:
+                    initial_valor_bruto = precio_base_sugerido_edit
                     
                 edited_valor_bruto = st.number_input(
                     "💰 **Valor Bruto (Recompensa Manual)**", 
