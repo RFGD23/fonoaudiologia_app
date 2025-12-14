@@ -56,25 +56,21 @@ conn = st.connection(
 @st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # Consulta SQL correcta
+        # *** ¡LA ÚNICA CONSULTA CORRECTA! ***
         df = conn.query('SELECT * FROM public."atenciones";')
 
-        # Convertir todos los nombres de columna a minúsculas (solución anterior)
+        # Conversión a minúsculas para eliminar el riesgo de KeyErrors
         df.columns = df.columns.str.lower()
         
-        # -----------------------------------------------------
-        # *** CÓDIGO TEMPORAL DE DEPURACIÓN CRÍTICA ***
-        # Comentamos las líneas que fallan y mostramos las columnas
-        
-        st.info("⚠️ DEBUG: Columnas recibidas y en minúsculas:")
-        st.write(df.columns.tolist())
-        
-        # Comenta estas líneas para que no falle al ordenar/convertir la fecha
-        # df = df.sort_values(by="fecha", ascending=False)
-        # df['fecha'] = pd.to_datetime(df['fecha']) 
-        # -----------------------------------------------------
+        # Ordenación final y conversión de fecha (la columna 'fecha' existe)
+        df = df.sort_values(by="fecha", ascending=False)
+        df['fecha'] = pd.to_datetime(df['fecha']) 
         
         return df
+        
+    except Exception as e:
+        st.error(f"Error al cargar datos de Supabase. Mensaje: {e}")
+        return pd.DataFrame()
         
     except Exception as e:
         st.error(f"Error al cargar datos de Supabase. Mensaje: {e}")
