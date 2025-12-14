@@ -18,7 +18,7 @@ def load_config(filename):
         with open(filename, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}. Asegúrate de que existe en la carpeta raíz.")
+        st.error(f"Error CRÍTICO: No se encontró el archivo de configuración {filename}.")
         return {} 
     except json.JSONDecodeError:
         st.error(f"Error: El archivo {filename} tiene un formato JSON inválido.")
@@ -106,13 +106,17 @@ if st.sidebar.button("🧹 Limpiar Caché y Recargar Datos", type="secondary"):
     st.cache_data.clear() 
     st.cache_resource.clear() 
     st.success("Caché limpiada. Recargando aplicación...")
-    st.rerun() # Función corregida para forzar recarga
+    st.rerun() 
 
 st.sidebar.markdown("---") 
 
 # Cargar los datos y asignarlos al estado de la sesión
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data()
+    
+# --- Variable para gestionar la edición ---
+if 'edit_index' not in st.session_state:
+    st.session_state.edit_index = None 
 
 # --- FORMULARIO DE INGRESO ---
 with st.expander("➕ Ingresar Nueva Atención", expanded=True):
@@ -190,13 +194,15 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
                     "Total Recibido": resultados['total_recibido']
                 }
                 
+                # Usamos .loc para asegurar que se añade con un nuevo índice
                 st.session_state.atenciones_df.loc[len(st.session_state.atenciones_df)] = nueva_atencion
                 save_data(st.session_state.atenciones_df)
                 st.success(f"🎉 Atención registrada para {paciente} por ${resultados['total_recibido']:,.0f}.".replace(",", "."))
                 st.balloons()
 
+
 # ===============================================
-# 4. DASHBOARD DE RESUMEN (CON TODOS LOS FILTROS Y ELIMINACIÓN)
+# 4. DASHBOARD DE RESUMEN (CON TODOS LOS FILTROS Y GESTIÓN)
 # ===============================================
 st.markdown("---")
 st.header("📊 Resumen y Análisis de Ingresos")
@@ -251,19 +257,15 @@ if not df.empty:
         
     # --- LÓGICA DE VALIDACIÓN DE FECHAS SEGURA ---
     
-    # 1. Crear un DataFrame con solo fechas válidas (no NaT) para calcular min/max
     df_valid_dates = df.dropna(subset=['Fecha'])
 
     if df_valid_dates.empty:
-        # Si no quedan fechas válidas, usamos la fecha de hoy como rango por defecto
         min_date = date.today()
         max_date = date.today()
     else:
-        # 2. Calculamos min/max solo en los datos válidos
         min_date = df_valid_dates['Fecha'].min().date()
         max_date = df_valid_dates['Fecha'].max().date()
 
-        # 3. Seguridad: corregir si la fecha mínima es inválida
         if min_date.year < 2000:
             min_date = date.today()
             max_date = date.today()
@@ -272,7 +274,6 @@ if not df.empty:
     st.subheader("Filtro de Periodo")
     col_start, col_end = st.columns(2)
     
-    # Aseguramos que la fecha inicial por defecto sea válida dentro del rango
     fecha_default_inicio = min_date
     if min_date > max_date:
         fecha_default_inicio = max_date 
@@ -290,8 +291,7 @@ if not df.empty:
         max_value=max_date
     )
     
-    # --- CORRECCIÓN FINAL PARA EL TypeError ---
-    # Eliminar cualquier NaN/NaT en la columna Fecha ANTES de aplicar la comparación de filtro
+    # --- CORRECCIÓN FINAL PARA EL TypeError: Limpiar NaN/NaT antes de comparar ---
     df = df.dropna(subset=['Fecha']) 
     
     # Aplicar el filtro final al DataFrame
@@ -366,30 +366,30 @@ if not df.empty:
     st.plotly_chart(fig_lugar, use_container_width=True)
 
     # ----------------------------------------------------
-    # VISTA PREVIA Y ELIMINACIÓN DE DATOS
+    # GESTIÓN: VISTA PREVIA, EDICIÓN Y ELIMINACIÓN DE DATOS
     # ----------------------------------------------------
     st.header("📋 Gestión de Atenciones Registradas")
 
-    # Usamos el índice original para referenciar la eliminación en st.session_state.atenciones_df
     df_display = df.copy() 
     
-    st.subheader("Atenciones Registradas (Haga click en '🗑️' para eliminar)")
+    st.subheader("Atenciones Registradas (✏️ Editar, 🗑️ Eliminar)")
 
     # Títulos de columna
-    cols_title = st.columns([0.15, 0.15, 0.15, 0.35, 0.1])
+    cols_title = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
     cols_title[0].write("**Fecha**")
     cols_title[1].write("**Lugar**")
     cols_title[2].write("**Líquido**")
     cols_title[3].write("**Paciente**")
-    cols_title[4].write("**Acción**")
+    cols_title[4].write("**Editar**") 
+    cols_title[5].write("**Eliminar**") 
     
     st.markdown("---") 
 
-    # Iterar sobre las filas y crear el botón de eliminación
+    # Iterar sobre las filas y crear los botones
     for index, row in df_display.iterrows():
         
         # Crear una estructura de columnas para cada fila
-        cols = st.columns([0.15, 0.15, 0.15, 0.35, 0.1])
+        cols = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
         
         # Mostrar la información clave de la fila
         cols[0].write(row['Fecha'].strftime('%Y-%m-%d'))
@@ -397,18 +397,17 @@ if not df.empty:
         cols[2].write(f"${row['Total Recibido']:,.0f}".replace(",", "."))
         cols[3].write(row['Paciente'])
         
-        # Botón de eliminación.
-        if cols[4].button("🗑️", key=f"delete_{index}", help="Eliminar esta atención de forma permanente"):
-            
-            # Eliminar la fila del DataFrame original (que está en session_state)
+        # --- BOTÓN DE EDICIÓN ---
+        if cols[4].button("✏️", key=f"edit_{index}", help="Editar esta atención"):
+            st.session_state.edit_index = index
+            st.rerun()
+
+        # --- BOTÓN DE ELIMINACIÓN ---
+        if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta atención de forma permanente"):
+            # Usar .loc para asegurar que solo se eliminan filas del DF completo
             st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index)
-            
-            # Guardar el DataFrame actualizado al disco
             save_data(st.session_state.atenciones_df)
-            
             st.success(f"Atención del paciente {row['Paciente']} eliminada. Recargando...")
-            
-            # Forzar la recarga de la aplicación para actualizar la tabla y los KPIs
             st.rerun()
 
     st.markdown("---") 
@@ -422,5 +421,116 @@ if not df.empty:
         mime='text/csv',
     )
 else:
-    # Este es el bloque que se ejecuta si el DF está vacío desde el inicio
     st.info("Aún no hay datos. Registra tu primera atención para ver el resumen.")
+
+# ===============================================
+# 5. MODAL DE EDICIÓN DE REGISTRO (NUEVA SECCIÓN)
+# ===============================================
+
+if st.session_state.edit_index is not None:
+    
+    # 1. Obtener los datos actuales de la fila
+    index_to_edit = st.session_state.edit_index
+    try:
+        data_to_edit = st.session_state.atenciones_df.loc[index_to_edit]
+    except KeyError:
+        st.error("Error: El índice de la fila a editar no fue encontrado.")
+        st.session_state.edit_index = None
+        st.rerun()
+
+    # 2. Iniciar el formulario modal
+    with st.expander(f"📝 Editar Atención para {data_to_edit['Paciente']}", expanded=True):
+        
+        with st.form("edit_form", clear_on_submit=False):
+            st.subheader("Modificar Datos de la Atención")
+
+            # --- Campos del formulario prellenados ---
+            
+            col_edit1, col_edit2 = st.columns(2)
+
+            with col_edit1:
+                # La fecha debe ser un objeto date para el widget
+                edited_fecha = st.date_input("🗓️ Fecha de Atención", value=data_to_edit['Fecha'].date())
+                
+                # Para Lugar
+                try:
+                    lugar_idx = LUGARES.index(data_to_edit['Lugar'])
+                except ValueError:
+                    lugar_idx = 0
+                edited_lugar = st.selectbox("📍 Lugar de Atención", options=LUGARES, index=lugar_idx)
+                
+                # Para Ítem (dependiente del lugar seleccionado)
+                items_edit = list(PRECIOS_BASE_CONFIG.get(edited_lugar, {}).keys())
+                try:
+                    current_item_index = items_edit.index(data_to_edit['Ítem'])
+                except ValueError:
+                    current_item_index = 0
+                edited_item = st.selectbox("📋 Ítem/Procedimiento", options=items_edit, index=current_item_index)
+                
+                edited_paciente = st.text_input("👤 Nombre del Paciente", value=data_to_edit['Paciente'])
+                
+                # Para Método de Pago
+                try:
+                    pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'])
+                except ValueError:
+                    pago_idx = 0
+                edited_metodo_pago = st.radio("💳 Método de Pago", options=METODOS_PAGO, index=pago_idx, key="edit_metodo")
+
+            with col_edit2:
+                edited_valor_bruto = st.number_input(
+                    "💰 **Valor Bruto (Manual)**", 
+                    min_value=0, 
+                    value=int(data_to_edit['Valor Bruto']), 
+                    step=1000
+                )
+                edited_desc_adicional_manual = st.number_input(
+                    "✂️ **Descuento Adicional/Ajuste**", 
+                    min_value=-500000, 
+                    value=int(data_to_edit['Desc. Adicional']), 
+                    step=1000,
+                    key="edit_desc_adic"
+                )
+                
+                # Recalcular el total líquido con los nuevos datos
+                recalculo = calcular_ingreso(
+                    edited_lugar, 
+                    edited_item, 
+                    edited_metodo_pago, 
+                    edited_desc_adicional_manual,
+                    fecha_atencion=edited_fecha, 
+                    valor_bruto_override=edited_valor_bruto
+                )
+                
+                st.markdown("###")
+                st.metric(
+                    label="## NUEVO TOTAL LÍQUIDO", 
+                    value=f"${recalculo['total_recibido']:,.0f}".replace(",", ".")
+                )
+
+            col_btn1, col_btn2 = st.columns([1, 1])
+
+            # Botón de Guardar
+            if col_btn1.form_submit_button("💾 Guardar Cambios y Actualizar", type="primary"):
+                # 3. Guardar los cambios
+                st.session_state.atenciones_df.loc[index_to_edit] = {
+                    "Fecha": edited_fecha.strftime('%Y-%m-%d'), 
+                    "Lugar": edited_lugar, 
+                    "Ítem": edited_item, 
+                    "Paciente": edited_paciente, 
+                    "Método Pago": edited_metodo_pago,
+                    "Valor Bruto": recalculo['valor_bruto'],
+                    "Desc. Fijo Lugar": recalculo['desc_fijo_lugar'],
+                    "Desc. Tarjeta": recalculo['desc_tarjeta'],
+                    "Desc. Adicional": edited_desc_adicional_manual,
+                    "Total Recibido": recalculo['total_recibido']
+                }
+                
+                save_data(st.session_state.atenciones_df)
+                st.session_state.edit_index = None # Cerrar el modal
+                st.success(f"🎉 Atención para {edited_paciente} actualizada exitosamente. Recargando...")
+                st.rerun()
+                
+            # Botón de Cancelar
+            if col_btn2.form_submit_button("❌ Cancelar Edición"):
+                st.session_state.edit_index = None # Cerrar el modal
+                st.rerun()
