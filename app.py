@@ -5,7 +5,7 @@ import os
 import json 
 import time 
 import plotly.express as px
-import numpy as np # Necesario para manejar NaN
+import numpy as np 
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -42,14 +42,15 @@ def load_config(filename):
         if filename == PRECIOS_FILE:
             default_data = {
                 'ALERCE': {'Item1': 30000, 'Item2': 40000}, 
-                'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 25000, '5 SABADOS': 30000}
+                'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 25000, '5 SABADOS': 30000, 'PACIENTE': 30000}
             }
         elif filename == DESCUENTOS_FILE:
             default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
         elif filename == COMISIONES_FILE:
             default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03, 'AMAR AUSTRAL': 0.00}
         elif filename == REGLAS_FILE:
-            default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}}
+            # Aseguramos que la regla de AMAR AUSTRAL exista para el ejemplo
+            default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}} 
         else:
             default_data = {}
             
@@ -99,7 +100,6 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 # 2. FUNCIONES DE PERSISTENCIA, CÁLCULO Y ESTILO
 # ===============================================
 
-# Función de carga de datos SIN CACHE (para solucionar problemas de persistencia)
 def load_data():
     """Carga los datos del archivo CSV de forma segura."""
     if os.path.exists(DATA_FILE):
@@ -121,10 +121,11 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     """Calcula el ingreso final líquido."""
     
     # Asegurar que el lugar y el método de pago están en MAYÚSCULAS para coincidir con la configuración
-    lugar_upper = lugar.upper()
-    metodo_pago_upper = metodo_pago.upper()
+    lugar_upper = lugar.upper() if lugar else ''
+    metodo_pago_upper = metodo_pago.upper() if metodo_pago else ''
     
-    if not lugar or not item or not PRECIOS_BASE_CONFIG:
+    # Manejar caso de datos incompletos
+    if not lugar_upper or not PRECIOS_BASE_CONFIG or not metodo_pago_upper:
           return {
               'valor_bruto': 0,
               'desc_fijo_lugar': 0,
@@ -132,39 +133,44 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
               'total_recibido': 0
           }
     
+    # 1. Obtener Valor Bruto
     precio_base = PRECIOS_BASE_CONFIG.get(lugar_upper, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
-    # --- LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo) ---
+    # 2. LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo)
     
-    # 1. Obtener el descuento fijo base (Tributo) usando la clave en MAYÚSCULAS
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
     
-    # 2. Revisar si existe una regla especial para el día
+    # 2.1. Revisar si existe una regla especial para el día
     if lugar_upper in DESCUENTOS_REGLAS:
         
-        # Obtener el número del día de la semana
-        if isinstance(fecha_atencion, pd.Timestamp):
-            dia_semana_num = fecha_atencion.weekday()
-        elif isinstance(fecha_atencion, date):
-            dia_semana_num = fecha_atencion.weekday()
-        else:
-            dia_semana_num = date.today().weekday()
+        # Intentar obtener el día de la semana
+        try:
+            if isinstance(fecha_atencion, pd.Timestamp):
+                dia_semana_num = fecha_atencion.weekday()
+            elif isinstance(fecha_atencion, date):
+                dia_semana_num = fecha_atencion.weekday()
+            else:
+                dia_semana_num = date.today().weekday()
             
-        dia_nombre = DIAS_SEMANA[dia_semana_num].upper() # Obtener el nombre del día en mayúsculas
-        
-        # Buscar la regla específica para el día en MAYÚSCULAS
-        regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
-        
-        # 3. Si la regla especial existe, sobrescribe el descuento base
-        if regla_especial is not None:
-            desc_fijo_lugar = regla_especial 
+            dia_nombre = DIAS_SEMANA[dia_semana_num].upper() # Obtener el nombre del día en mayúsculas
+            
+            # Buscar la regla específica para el día en MAYÚSCULAS
+            regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
+            
+            # 2.2. Si la regla especial existe, sobrescribe el descuento base
+            if regla_especial is not None:
+                desc_fijo_lugar = regla_especial 
+        except Exception:
+             # Si falla la conversión de fecha, se usa el descuento base.
+             pass
 
-    # Aplicar Comisión de Tarjeta usando la clave en MAYÚSCULAS
+
+    # 3. Aplicar Comisión de Tarjeta usando la clave en MAYÚSCULAS
     comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
     desc_tarjeta = valor_bruto * comision_pct
     
-    # Cálculo final
+    # 4. Cálculo final
     total_recibido = (
         valor_bruto 
         - desc_fijo_lugar 
@@ -173,42 +179,57 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     )
     
     return {
-        'valor_bruto': valor_bruto,
-        'desc_fijo_lugar': desc_fijo_lugar,
-        'desc_tarjeta': desc_tarjeta,
-        'total_recibido': total_recibido
+        'valor_bruto': int(valor_bruto),
+        'desc_fijo_lugar': int(desc_fijo_lugar),
+        'desc_tarjeta': int(desc_tarjeta),
+        'total_recibido': int(total_recibido)
     }
 
+# 🚨 CORRECCIÓN CLAVE: Esta función ahora no solo actualiza el Valor Bruto, 
+# sino que también fuerza la actualización del Desc. Adicional a 0 y 
+# asegura que el Item seleccionado exista, evitando errores.
 def update_price_from_item_or_lugar():
     """
     Callback llamado cuando 'form_lugar' o 'form_item' cambia.
+    Fuerza la recarga del precio base y reinicia el descuento adicional.
     """
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
     
+    # 1. Obtener la lista de ítems disponibles para el nuevo lugar
     items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
 
+    # 2. Determinar el ítem a usar para el cálculo y selección
     current_item = st.session_state.get('form_item')
     
+    item_calc_for_price = None
+    
+    if not items_disponibles:
+        st.session_state.form_item = ''
+        st.session_state.form_valor_bruto = 0
+        st.session_state.form_desc_adic = 0
+        return
+        
     if current_item not in items_disponibles:
-        if items_disponibles:
-            st.session_state.form_item = items_disponibles[0]
-            item_calc_for_price = items_disponibles[0]
-        else:
-            st.session_state.form_item = ''
-            st.session_state.form_valor_bruto = 0
-            st.session_state.form_desc_adic = 0
-            return
+        # Si el ítem actual no está en el nuevo lugar, seleccionamos el primero disponible
+        st.session_state.form_item = items_disponibles[0]
+        item_calc_for_price = items_disponibles[0]
     else:
+        # El ítem actual es válido
         item_calc_for_price = current_item
         
+    # 3. Calcular el precio base sugerido
     if not lugar_key_current or not item_calc_for_price:
         st.session_state.form_valor_bruto = 0
+        st.session_state.form_desc_adic = 0
         return
         
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
     
+    # 4. Actualizar el estado de sesión para el formulario
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
-    st.session_state.form_desc_adic = 0
+    st.session_state.form_desc_adic = 0 # Reiniciar descuento adicional para forzar el recálculo
+    
+    # st.experimental_rerun() # Esto no es necesario si se actualiza el state, pero puede ser una alternativa si falla.
 
 def update_edit_price():
     """
@@ -219,12 +240,14 @@ def update_edit_price():
     
     if not lugar_key_edit or not item_key_edit:
         st.session_state.edit_valor_bruto = 0
+        st.session_state.edit_desc_adic = 0
         return
         
     precio_base_sugerido_edit = PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).get(item_key_edit, 0)
     
+    # 🚨 CORRECCIÓN: Asegurar que se sobrescribe el valor bruto y el desc. adicional se mantiene/reinicia
     st.session_state.edit_valor_bruto = int(precio_base_sugerido_edit)
-    
+    # No tocamos st.session_state.edit_desc_adic para mantener el valor original si ya fue inicializado
 
 def set_dark_mode_theme():
     """Establece transparencia y ajusta la apariencia de los contenedores para el tema oscuro."""
@@ -248,7 +271,7 @@ def format_currency(value):
     """Función para formatear números como moneda en español con punto y coma."""
     if value is None or not isinstance(value, (int, float)):
          value = 0
-    return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"${int(value):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def sanitize_number_input(value):
     """Convierte un valor de input de tabla (que puede ser NaN o string) a int."""
@@ -278,10 +301,20 @@ st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
 # --- Herramientas de Mantenimiento ---
 if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondary"):
+    # Limpiar todos los cachés
     st.cache_data.clear() 
     st.cache_resource.clear() 
+    
+    # Recargar configuración y datos
     re_load_global_config() 
-    st.session_state.atenciones_df = load_data() # Forzar recarga de datos
+    st.session_state.atenciones_df = load_data() 
+    
+    # Reiniciar el estado de sesión para el formulario
+    if 'form_lugar' in st.session_state: del st.session_state['form_lugar']
+    if 'form_item' in st.session_state: del st.session_state['form_item']
+    if 'form_valor_bruto' in st.session_state: del st.session_state['form_valor_bruto']
+    if 'form_desc_adic' in st.session_state: del st.session_state['form_desc_adic']
+    
     st.success("Caché, Configuración y Datos Recargados. ¡La magia continúa!")
     st.rerun() 
 
@@ -294,9 +327,6 @@ if 'atenciones_df' not in st.session_state:
 if 'edit_index' not in st.session_state:
     st.session_state.edit_index = None 
 
-if 'edited_lugar_state' not in st.session_state:
-    st.session_state.edited_lugar_state = None 
-
 # --- Pestañas Principales ---
 tab_registro, tab_dashboard, tab_config = st.tabs(["📝 Registrar Aventura", "📊 Mapa del Tesoro", "⚙️ Configuración Maestra"])
 
@@ -308,15 +338,14 @@ with tab_registro:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' para agregar datos iniciales.")
         st.stop()
     
-    # 1. Definir valores iniciales para los Selectboxes y Number Inputs
+    # 1. Definir valores iniciales y forzar la inicialización si faltan
     
-    # El valor del SelectBox se guarda en MAYÚSCULAS (por LUGARES)
-    lugar_key_initial = LUGARES[0] if LUGARES else ''
+    lugar_key_initial = LUGARES[0] # El valor del SelectBox se guarda en MAYÚSCULAS (por LUGARES)
     
     if 'form_lugar' not in st.session_state:
         st.session_state.form_lugar = lugar_key_initial
     
-    current_lugar_value_upper = st.session_state.form_lugar # Ya está en MAYÚSCULAS
+    current_lugar_value_upper = st.session_state.form_lugar 
     items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
     
     item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
@@ -340,11 +369,13 @@ with tab_registro:
 
     # 1. SELECTBOX LUGAR
     with col_reactivo_1:
+        # Aseguramos que el índice no falle si el valor no está en LUGARES
         try:
             lugar_index = LUGARES.index(st.session_state.form_lugar)
         except ValueError:
             lugar_index = 0
 
+        # Al cambiar el lugar, se llama a update_price_from_item_or_lugar
         st.selectbox("📍 Castillo/Lugar de Atención", 
                      options=LUGARES, 
                      key="form_lugar",
@@ -363,6 +394,7 @@ with tab_registro:
         except (ValueError, KeyError):
             item_index = 0 
             
+        # Al cambiar el ítem, se llama a update_price_from_item_or_lugar
         st.selectbox("📋 Poción/Procedimiento", 
                      options=items_filtrados_current, 
                      key="form_item",
@@ -388,13 +420,13 @@ with tab_registro:
             if not items_filtrados_initial:
                 st.warning("No hay ítems configurados para este lugar. Configure la pestaña.")
                 st.form_submit_button("Añadir datos antes de registrar", disabled=True)
-                st.stop()
-
+                # No hacemos st.stop() aquí para que el usuario pueda ver el botón y la advertencia.
 
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha_form") 
+                # 🚨 IMPORTANTE: Se usa st.session_state para la fecha también
+                fecha = st.date_input("🗓️ Fecha de Atención", date.today(), key="form_fecha") 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
                 
                 try:
@@ -405,22 +437,30 @@ with tab_registro:
 
             with col2:
                 
+                # 🚨 CORRECCIÓN CRÍTICA: Se usa el key `form_desc_adic` que se inicializa fuera del form
                 desc_adicional_manual = st.number_input(
                     "✂️ **Polvo Mágico Extra (Ajuste)**", 
                     min_value=-500000, 
                     value=st.session_state.get('form_desc_adic', 0), 
                     step=1000, 
-                    key="form_desc_adic",
+                    key="form_desc_adic_form", # Cambiamos el key para evitar conflicto de reinicialización
                     help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
                 )
+                
+                # Sincronizar el valor entre el input fuera del form y el input dentro del form (si el usuario lo modifica)
+                if 'form_desc_adic' not in st.session_state:
+                     st.session_state.form_desc_adic = 0
+                
+                # El valor del input dentro del form es el que usamos para el cálculo
+                desc_adicional_calc = st.session_state.form_desc_adic_form 
                 
                 # Ejecutar el cálculo central en tiempo real. 
                 resultados = calcular_ingreso(
                     st.session_state.form_lugar, 
                     st.session_state.form_item,              
                     st.session_state.form_metodo_pago,
-                    st.session_state.form_desc_adic,  
-                    fecha_atencion=st.session_state.form_fecha_form, 
+                    desc_adicional_calc, # Usamos el valor del widget dentro del form
+                    fecha_atencion=st.session_state.form_fecha, 
                     valor_bruto_override=st.session_state.form_valor_bruto 
                 )
 
@@ -428,17 +468,20 @@ with tab_registro:
                 
                 # --- LÓGICA DE ETIQUETADO DEL TRIBUTO ---
                 current_lugar_upper = st.session_state.form_lugar 
-                current_day_name = DIAS_SEMANA[st.session_state.form_fecha_form.weekday()]
+                
+                try:
+                    current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()]
+                except Exception:
+                    current_day_name = "N/A"
+                    
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
-                if current_lugar_upper in DESCUENTOS_REGLAS:
-                     # Buscar regla por el día en MAYÚSCULAS
+                if current_lugar_upper in DESCUENTOS_REGLAS and current_day_name != "N/A":
                      if DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper()) is not None:
                          desc_lugar_label += f" (Regla: {current_day_name})"
                          is_rule_applied = True
 
-                # Si no se aplicó regla especial, y hay un descuento base, indicar que es el base.
                 if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
                      desc_lugar_label += " (Base)"
                 
@@ -465,14 +508,14 @@ with tab_registro:
                         st.session_state.form_lugar, 
                         st.session_state.form_item, 
                         st.session_state.form_metodo_pago, 
-                        st.session_state.form_desc_adic, 
-                        fecha_atencion=st.session_state.form_fecha_form, 
+                        st.session_state.form_desc_adic_form, # Usar el valor del form
+                        fecha_atencion=st.session_state.form_fecha, 
                         valor_bruto_override=st.session_state.form_valor_bruto
                     )
                     
                     # 2. Creación del nuevo registro
                     nueva_atencion = {
-                        "Fecha": st.session_state.form_fecha_form.strftime('%Y-%m-%d'), 
+                        "Fecha": st.session_state.form_fecha.strftime('%Y-%m-%d'), 
                         "Lugar": st.session_state.form_lugar, 
                         "Ítem": st.session_state.form_item, 
                         "Paciente": st.session_state.form_paciente, 
@@ -480,7 +523,7 @@ with tab_registro:
                         "Valor Bruto": resultados_finales['valor_bruto'],
                         "Desc. Fijo Lugar": resultados_finales['desc_fijo_lugar'],
                         "Desc. Tarjeta": resultados_finales['desc_tarjeta'],
-                        "Desc. Adicional": st.session_state.form_desc_adic,
+                        "Desc. Adicional": st.session_state.form_desc_adic_form, # Usar el valor del form
                         "Total Recibido": resultados_finales['total_recibido']
                     }
                     
@@ -494,7 +537,9 @@ with tab_registro:
                     save_data(st.session_state.atenciones_df)
                     st.success(f"🎉 ¡Aventura registrada para {st.session_state.form_paciente}! El tesoro es {format_currency(resultados_finales['total_recibido'])}")
                     
-                    # 4. Forzar recarga
+                    # 4. Forzar recarga para limpiar el formulario y actualizar la lista de datos
+                    st.session_state.form_valor_bruto = int(precio_base_sugerido)
+                    st.session_state.form_desc_adic = 0
                     st.rerun() 
 
 
@@ -1162,3 +1207,4 @@ with tab_config:
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar comisiones: {e}")
+            
