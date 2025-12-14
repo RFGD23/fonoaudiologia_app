@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import os
-import io
-import plotly.express as px 
 import json 
 import time 
 import base64 
@@ -26,11 +24,12 @@ def load_config(filename):
 
 # --- Cargar Variables Globales desde JSON ---
 try:
+    # Intenta cargar los archivos de configuración
     PRECIOS_BASE_CONFIG = load_config('precios_base.json')
     DESCUENTOS_LUGAR = load_config('descuentos_lugar.json')
     COMISIONES_PAGO = load_config('comisiones_pago.json')
 except:
-    # Fallback si no existen los archivos JSON
+    # Fallback si no existen los archivos JSON o hay error
     PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ItemA': 25000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
@@ -120,7 +119,7 @@ def update_edited_lugar():
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
 
-# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN DEFINITIVA PARA SCROLL) ---
+# --- FUNCIONES PARA FONDO TEMÁTICO (SOLUCIÓN FINAL Y DIAGNÓSTICO) ---
 
 @st.cache_data
 def get_base64_of_file(bin_file):
@@ -139,25 +138,29 @@ def get_base64_of_file(bin_file):
 def set_background(png_file):
     """Establece la imagen de fondo usando CSS inyectado y transparencia."""
     bin_str = get_base64_of_file(png_file)
-    if not bin_str:
+    
+    # 🚨 LÍNEA DE DIAGNÓSTICO 🚨
+    # Si la cadena es muy corta, significa que la imagen no se cargó correctamente.
+    if len(bin_str) < 100:
+        # La advertencia real la da la función get_base64_of_file
         return
-        
+    # ------------------------------------
+
     # *************************************************************************
     # CSS INYECTADO: SOLUCIÓN FINAL DE FONDO Y TRANSPARENCIA
     # *************************************************************************
     page_bg_img = f'''
     <style>
     /* 1. SOLUCIÓN DEFINITIVA PARA QUE EL FONDO SE MUEVA CON EL CONTENIDO */
-    /* Aseguramos transparencia base para el contenedor principal */
     [data-testid="stAppViewBlock"] {{
         background-color: transparent; 
     }}
     
-    /* Aplicamos el fondo al contenedor principal de Streamlit (.main) y forzamos el scroll */
+    /* Aplicamos el fondo al contenedor principal de Streamlit (.main) */
     .main {{
         background-image: url("data:image/png;base64,{bin_str}");
         background-size: cover; 
-        background-attachment: scroll !important; /* ¡Forzamos el movimiento con el contenido! */
+        background-attachment: scroll !important; /* Mover con el contenido */
         background-repeat: no-repeat;
         min-height: 100vh;
     }}
@@ -526,7 +529,7 @@ else:
     st.info("Aún no hay aventuras. ¡Registra el primer tesoro para ver el mapa!")
 
 # ===============================================
-# 5. MODAL DE EDICIÓN DE REGISTRO (SOLUCIÓN DE ERROR Y DISEÑO)
+# 5. MODAL DE EDICIÓN DE REGISTRO (CORREGIDO)
 # ===============================================
 
 if st.session_state.edit_index is not None:
@@ -553,7 +556,7 @@ if st.session_state.edit_index is not None:
         
         col_edit1_out, col_edit2_out = st.columns(2)
         
-        # --- WIDGETS FUERA DEL FORMULARIO PARA QUE EL CALLBACK FUNCIONE ---
+        # --- WIDGETS DE CAMBIO DE ESTADO FUERA DEL FORMULARIO ---
         with col_edit1_out:
             edited_fecha = st.date_input("🗓️ Fecha de Atención", 
                                           value=initial_date, 
@@ -570,7 +573,7 @@ if st.session_state.edit_index is not None:
                 options=LUGARES, 
                 index=lugar_idx, 
                 key="edit_lugar", 
-                on_change=update_edited_lugar # Este callback ahora funciona
+                on_change=update_edited_lugar 
             )
 
             items_edit = list(PRECIOS_BASE_CONFIG.get(st.session_state.edited_lugar_state, {}).keys())
@@ -599,10 +602,9 @@ if st.session_state.edit_index is not None:
         
         with col_edit2_out: 
             
-            # --- LÓGICA DE PRECIO BASE SUGERIDO CORREGIDA ---
+            # --- MANEJO DEL VALOR BRUTO ---
             current_lugar = st.session_state.edit_lugar
             current_item = st.session_state[item_key]
-            
             precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar, {}).get(current_item, 0)
             
             if ('edit_valor_bruto' not in st.session_state or 
