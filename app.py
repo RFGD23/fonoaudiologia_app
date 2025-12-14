@@ -113,56 +113,53 @@ def update_edited_lugar():
     """Actualiza el lugar seleccionado inmediatamente."""
     st.session_state.edited_lugar_state = st.session_state.edit_lugar
 
-# --- FUNCIONES PARA FONDO SÓLIDO (BLANCO) ---
-def set_solid_white_theme():
-    """Establece un fondo blanco puro y ajusta la apariencia de los contenedores."""
-    solid_white_css = '''
+
+# --- FUNCIONES PARA FONDO SÓLIDO (DARK MODE) ---
+def set_dark_mode_theme():
+    """Establece transparencia y ajusta la apariencia de los contenedores para el tema oscuro."""
+    
+    dark_mode_css = '''
     <style>
-    /* 1. Fondo Blanco Puro en el Contenedor Raíz */
-    /* Forzar modo claro a nivel de navegador para mejor compatibilidad */
-    :root {
-        color-scheme: light !important; 
-    }
-    
-    /* stApp: Contenedor principal de Streamlit */
+    /* 1. Fondo principal: Streamlit ya usa gris oscuro por defecto, lo respetamos */
     .stApp, [data-testid="stAppViewBlock"], .main {
-        background-color: #FFFFFF !important; /* Blanco puro */
-        background-image: none !important; 
+        background-color: transparent !important; /* Aseguramos que la base use el fondo de Streamlit */
+        background-image: none !important;
     }
     
-    /* 2. Barra Lateral (Sidebar) - Fondo Claro */
+    /* 2. Barra Lateral (Sidebar) - Le damos un fondo ligeramente más opaco y oscuro */
     [data-testid="stSidebarContent"] {
-        background-color: #F8F8F8 !important; /* Gris muy claro para diferenciar */
-        color: black;
+        background-color: rgba(30, 30, 30, 0.9) !important; /* Gris oscuro semi-transparente */
+        color: white; /* Aseguramos texto blanco */
     }
 
     /* 3. Bloques de Contenido (Forms, Expander, Metrics) */
+    /* Usamos un color negro semi-transparente para que floten sobre el fondo */
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
     .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child { 
-        background-color: #F0F0F0 !important; /* Gris claro suave */
+        background-color: rgba(10, 10, 10, 0.6) !important; /* Negro muy suave, semi-transparente */
         border-radius: 10px;
         padding: 10px;
     } 
 
     /* 4. Tablas y Dataframes */
     .stDataFrame, .stTable {
-        background-color: #EAEAEA !important; /* Gris ligeramente más oscuro para las tablas */
+        background-color: rgba(0, 0, 0, 0.4) !important; /* Negro más transparente para tablas */
     }
     
-    /* 5. Asegurar que el texto sea oscuro sobre el fondo claro */
+    /* 5. Asegurar que el texto sea claro sobre el fondo oscuro */
     h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] *, [data-testid="stHeader"] * { 
-        color: #333333 !important;
+        color: white !important; /* Forzar color blanco para títulos y labels */
     }
 
-    /* 6. Ajuste para que las tablas dentro de la sidebar sean visibles */
-    [data-testid="stSidebarContent"] .stDataFrame, [data-testid="stSidebarContent"] .stTable {
-        background-color: #E0E0E0 !important;
+    /* 6. Ajuste para textos en Expander */
+    .streamlit-expander label {
+        color: white !important;
     }
     
     </style>
     '''
-    st.markdown(solid_white_css, unsafe_allow_html=True)
+    st.markdown(dark_mode_css, unsafe_allow_html=True)
 
 
 # ===============================================
@@ -170,14 +167,14 @@ def set_solid_white_theme():
 # ===============================================
 
 # 🚀 Configuración de la Página y Título
-# ❌ CORRECCIÓN: Eliminado theme="light" para evitar TypeError en versiones antiguas.
+# Dejamos la configuración simple para que Streamlit use el modo oscuro por defecto.
 st.set_page_config(
     page_title="🏰 Control de Ingresos Mágicos 🪄", 
     layout="wide"
 )
 
-# ➡️ EJECUTAR LA FUNCIÓN DEL TEMA CLARO AQUÍ:
-set_solid_white_theme()
+# ➡️ EJECUTAR LA FUNCIÓN DEL TEMA OSCURO AQUÍ:
+set_dark_mode_theme()
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
@@ -678,4 +675,3 @@ if st.session_state.edit_index is not None:
                 st.session_state.edit_index = None 
                 st.session_state.edited_lugar_state = None 
                 st.rerun()
-            
