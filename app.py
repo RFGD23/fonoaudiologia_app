@@ -16,34 +16,45 @@ DESCUENTOS_FILE = 'descuentos_lugar.json'
 COMISIONES_FILE = 'comisiones_pago.json'
 REGLAS_FILE = 'descuentos_reglas.json' 
 
+def save_config(data, filename):
+    """Guarda la configuración a un archivo JSON."""
+    try:
+        with open(filename, 'w') as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        st.error(f"Error al guardar el archivo {filename}: {e}")
+
 def load_config(filename):
-    """Carga la configuración desde un archivo JSON."""
+    """Carga la configuración desde un archivo JSON, creando el archivo si no existe."""
     try:
         with open(filename, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            if not data and filename == PRECIOS_FILE:
+                 raise ValueError("El archivo de precios está vacío.")
+            return data
+            
     except FileNotFoundError:
-        # Crea un archivo con configuración base si no existe
+        st.warning(f"Archivo de configuración '{filename}' no encontrado. Creando uno por defecto.")
+        
+        # --- Configuración por defecto para inicialización ---
         if filename == PRECIOS_FILE:
-            default_data = {'ALERCE': {'Item1': 30000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000}}
+            default_data = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000}}
         elif filename == DESCUENTOS_FILE:
             default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
         elif filename == COMISIONES_FILE:
-            default_data = {'EFECTIVO': 0.00, 'TARJETA': 0.03}
+            default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
         elif filename == REGLAS_FILE:
-            default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000}}
+            default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}}
         else:
             default_data = {}
+            
         save_config(default_data, filename)
         return default_data
-    except json.JSONDecodeError:
-        st.error(f"Error: El archivo {filename} tiene un formato JSON inválido. Revisa su contenido.")
+    
+    except (json.JSONDecodeError, ValueError) as e:
+        st.error(f"Error en el archivo {filename} o está vacío: {e}. Por favor, revisa o elimina el archivo para regenerarlo.")
         return {} 
 
-def save_config(data, filename):
-    """Guarda la configuración a un archivo JSON."""
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=4)
-        
 # --- Cargar Variables Globales desde JSON ---
 PRECIOS_BASE_CONFIG = load_config(PRECIOS_FILE)
 DESCUENTOS_LUGAR = load_config(DESCUENTOS_FILE)
@@ -51,8 +62,9 @@ COMISIONES_PAGO = load_config(COMISIONES_FILE)
 DESCUENTOS_REGLAS = load_config(REGLAS_FILE)
 
 
-LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys()))
-METODOS_PAGO = list(COMISIONES_PAGO.keys())
+# Asegurarse de que las listas globales no estén vacías antes de usarlas
+LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys())) if PRECIOS_BASE_CONFIG else []
+METODOS_PAGO = list(COMISIONES_PAGO.keys()) if COMISIONES_PAGO else []
 DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
 
 
@@ -65,6 +77,7 @@ def load_data():
     """Carga los datos del archivo CSV de forma segura."""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE)
+        # Asegura la conversión de fecha, si falla se devuelve NaT
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d') 
         return df
     else:
@@ -81,7 +94,8 @@ def save_data(df):
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
     
-    if not lugar or not item:
+    # Manejo de casos límite si no hay configuración
+    if not lugar or not item or not PRECIOS_BASE_CONFIG:
          return {
             'valor_bruto': 0,
             'desc_fijo_lugar': 0,
@@ -89,7 +103,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             'total_recibido': 0
         }
     
-    # El lugar (lugar_key) ya viene en MAYÚSCULAS desde el formulario de registro
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
@@ -97,16 +110,17 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
     if lugar in DESCUENTOS_REGLAS:
+        # Asegurarse de que fecha_atencion es un objeto date o datetime
         if isinstance(fecha_atencion, pd.Timestamp):
             dia_semana_num = fecha_atencion.weekday()
         elif isinstance(fecha_atencion, date):
             dia_semana_num = fecha_atencion.weekday()
         else:
+            # Si no es un formato válido, usamos la fecha de hoy
             dia_semana_num = date.today().weekday()
             
         dia_nombre = DIAS_SEMANA[dia_semana_num]
         
-        # Si existe una regla específica para el día y no es 0, la usamos en lugar del valor base
         regla_especial = DESCUENTOS_REGLAS[lugar].get(dia_nombre)
         if regla_especial is not None:
             desc_fijo_lugar = regla_especial 
@@ -197,21 +211,27 @@ with tab_registro:
     # --- FORMULARIO DE INGRESO ---
     st.subheader("🎉 Nueva Aventura de Ingreso (Atención)")
     
-    # --- USAR st.form PARA MEJOR MANEJO DE ENVIOS SIN F5 ---
+    if not LUGARES or not METODOS_PAGO:
+        st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra' o los archivos JSON.")
+        st.stop() # Detiene la ejecución del formulario si no hay datos base
+
     with st.form("registro_atencion_form", clear_on_submit=True): 
         with st.expander("Detalles del Registro", expanded=True):
             
-            # --- VALORES INICIALES PARA EL PRIMER CICLO (EVITA ERRORES DE KEY) ---
-            lugar_key_initial = LUGARES[0] if LUGARES else ''
-            
-            # Si las claves del formulario existen, usamos el valor del estado de sesión.
-            # Si no existen (primer ciclo/después de submit), usamos el valor por defecto.
+            # --- VALORES INICIALES ROBUSTOS ---
+            lugar_key_initial = LUGARES[0] 
             current_lugar_value = st.session_state.get('form_lugar', lugar_key_initial)
             
-            # Para los items, necesitamos saber el lugar para filtrar
-            items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value.upper(), {}).keys())
+            # Asegurar que el lugar actual esté en mayúsculas para la búsqueda
+            current_lugar_value_upper = current_lugar_value.upper()
+            
+            # Obtener ítems disponibles para el lugar actual
+            items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
             item_key_initial = items_filtrados_initial[0] if items_filtrados_initial else ''
             current_item_value = st.session_state.get('form_item', item_key_initial)
+
+            if not items_filtrados_initial:
+                st.warning(f"No hay ítems configurados para el lugar: {current_lugar_value}. Agrega ítems en la pestaña de configuración.")
             
             col1, col2 = st.columns([1, 1])
 
@@ -230,36 +250,39 @@ with tab_registro:
                                                 index=lugar_index)
                 
                 # 2. SELECTBOX ÍTEM
-                # Obtenemos los ítems del LUGAR seleccionado en ESTE ciclo de ejecución (usando el valor de st.session_state.form_lugar)
                 lugar_key_current = st.session_state.form_lugar.upper()
                 items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
                 
                 try:
-                    # Intentamos usar la selección actual. Si no existe en la nueva lista, usamos el primer ítem.
-                    item_index = items_filtrados_current.index(current_item_value)
+                    # Usar el valor actual del selectbox para el item
+                    item_index = items_filtrados_current.index(st.session_state.form_item)
                 except (ValueError, KeyError):
-                    item_index = 0
+                    # Si el item previo no existe en la nueva lista (por cambio de lugar), selecciona el primero
+                    item_index = 0 
                     
                 item_seleccionado = st.selectbox("📋 Poción/Procedimiento", 
                                                 options=items_filtrados_current, 
                                                 key="form_item",
                                                 index=item_index)
                 
-                # --- CÁLCULO DE PRECIO SUGERIDO (CORRECCIÓN) ---
-                # Usamos los valores recién seleccionados por el usuario
+                # --- CÁLCULO DE PRECIO SUGERIDO ---
                 item_calc_for_price = st.session_state.form_item
                 precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
                 
                 paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
-                metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago")
+                
+                try:
+                    pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
+                except ValueError:
+                    pago_idx = 0
+                metodo_pago = st.radio("💳 Método de Pago Mágico", options=METODOS_PAGO, key="form_metodo_pago", index=pago_idx)
 
             with col2:
                 
-                # 3. VALOR BRUTO (utiliza el precio sugerido)
+                # 3. VALOR BRUTO
                 valor_bruto_input = st.number_input(
                     "💰 **Valor Bruto (Recompensa)**", 
                     min_value=0, 
-                    # El valor se inicializa con el precio sugerido. Si el usuario ya lo modificó, Streamlit mantiene su valor.
                     value=int(precio_base_sugerido), 
                     step=1000,
                     key="form_valor_bruto" 
@@ -290,7 +313,8 @@ with tab_registro:
                 desc_lugar_label = f"Tributo al Castillo ({st.session_state.form_lugar})"
                 if st.session_state.form_lugar.upper() in DESCUENTOS_REGLAS:
                     dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
-                    desc_lugar_label += f" ({dias_semana.get(st.session_state.form_fecha.weekday())})" 
+                    dia_atencion = dias_semana.get(st.session_state.form_fecha.weekday())
+                    desc_lugar_label += f" ({dia_atencion})" 
 
                 st.info(f"**Tributo al Castillo ({st.session_state.form_lugar}):** {format_currency(resultados['desc_fijo_lugar'])}")
                 
@@ -310,7 +334,7 @@ with tab_registro:
                 if st.session_state.form_paciente == "":
                     st.error("Por favor, ingresa el nombre del paciente.")
                 else:
-                    # 1. Recalculo final (Asegurando que usamos los valores del estado de sesión)
+                    # 1. Recalculo final
                     resultados_finales = calcular_ingreso(
                         st.session_state.form_lugar.upper(), 
                         st.session_state.form_item, 
@@ -334,8 +358,7 @@ with tab_registro:
                         "Total Recibido": resultados_finales['total_recibido']
                     }
                     
-                    # 3. Actualizar DataFrame y CSV (CORRECCIÓN GUARDADO)
-                    # Usamos pd.concat para agregar la nueva fila de manera robusta
+                    # 3. Actualizar DataFrame y CSV
                     df_actualizado = pd.concat([
                         st.session_state.atenciones_df, 
                         pd.DataFrame([nueva_atencion])
@@ -382,18 +405,19 @@ with tab_dashboard:
         st.sidebar.markdown("---") 
         
         # APLICACIÓN DE FILTROS 
+        df_filtrado_dashboard = df.copy()
         if filtro_lugar != 'Todos los Reinos':
-            df = df[df['Lugar'] == filtro_lugar]
+            df_filtrado_dashboard = df_filtrado_dashboard[df_filtrado_dashboard['Lugar'] == filtro_lugar]
             
         if filtro_item != 'Todas las Pociones':
-            df = df[df['Ítem'] == filtro_item]
+            df_filtrado_dashboard = df_filtrado_dashboard[df_filtrado_dashboard['Ítem'] == filtro_item]
         
-        if df.empty:
+        if df_filtrado_dashboard.empty:
             st.warning("No hay datos disponibles para la combinación mágica seleccionada.")
             st.stop()
             
         # LÓGICA DE VALIDACIÓN DE FECHAS SEGURA 
-        df_valid_dates = df.dropna(subset=['Fecha'])
+        df_valid_dates = df_filtrado_dashboard.dropna(subset=['Fecha'])
 
         if df_valid_dates.empty:
             min_date = date.today()
@@ -426,19 +450,17 @@ with tab_dashboard:
             max_value=max_date
         )
         
-        df = df.dropna(subset=['Fecha']) 
+        df_filtrado_dashboard = df_filtrado_dashboard.dropna(subset=['Fecha']) 
         
-        df_filtrado = df[
-            (df['Fecha'].dt.date >= fecha_inicio) & 
-            (df['Fecha'].dt.date <= fecha_fin)
+        df = df_filtrado_dashboard[
+            (df_filtrado_dashboard['Fecha'].dt.date >= fecha_inicio) & 
+            (df_filtrado_dashboard['Fecha'].dt.date <= fecha_fin)
         ]
         
-        if df_filtrado.empty:
+        if df.empty:
             st.warning("No hay tesoros registrados en este periodo de tiempo.")
             st.stop()
             
-        df = df_filtrado
-        
         # ----------------------------------------------------
         # MÉTRICAS PRINCIPALES (KPIs)
         # ----------------------------------------------------
@@ -462,7 +484,6 @@ with tab_dashboard:
         # ----------------------------------------------------
         st.header("⚖️ Análisis de Rentabilidad y Costos")
 
-        # 1. Cálculo de Reducciones (Costos)
         df['Total Reducciones'] = df["Desc. Fijo Lugar"] + df["Desc. Tarjeta"] + df["Desc. Adicional"]
         total_cost_reductions = df['Total Reducciones'].sum()
         total_atenciones = len(df)
@@ -538,30 +559,12 @@ with tab_dashboard:
             
         st.markdown("---")
         
-        # Análisis por Lugar (Plotly)
-        st.subheader("🗺️ Mapa de Castillos (Distribución de Ingresos Netos)")
-        resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
-        
-        fig_lugar = px.pie(
-            resumen_lugar,
-            values='Total Recibido',
-            names='Lugar',
-            title='Proporción de Tesoros Líquidos por Castillo',
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-        fig_lugar.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_lugar, use_container_width=True)
-
-        # ----------------------------------------------------
-        # GESTIÓN Y EXPORTACIÓN SIMPLE (VISTA DE TABLA)
-        # ----------------------------------------------------
         st.header("📜 Libro de Registros (Gestión de Atenciones)")
 
         df_display = df.copy() 
         
         st.subheader("Atenciones Registradas (✏️ Editar, 🗑️ Eliminar)")
 
-        # Títulos de columna con emojis
         cols_title = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
         cols_title[0].write("**Fecha**")
         cols_title[1].write("**Lugar**")
@@ -590,7 +593,6 @@ with tab_dashboard:
 
             # --- BOTÓN DE ELIMINACIÓN ---
             if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta aventura (¡Cuidado con la magia negra!)"):
-                # Se corrige la eliminación en el DataFrame de sesión
                 st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index, axis=0).reset_index(drop=True)
                 save_data(st.session_state.atenciones_df)
                 st.success(f"Aventura de {row['Paciente']} eliminada. Recargando el Libro...")
@@ -650,7 +652,6 @@ with tab_dashboard:
                 except ValueError:
                     lugar_idx = 0
                 
-                # SELECTBOX DE LUGAR (CON CALLBACK para actualizar el estado intermedio)
                 edited_lugar_display = st.selectbox(
                     "📍 Castillo/Lugar de Atención", 
                     options=LUGARES, 
@@ -659,7 +660,6 @@ with tab_dashboard:
                     on_change=update_edited_lugar 
                 )
                 
-                # CLAVE EN MAYÚSCULAS PARA FILTRAR ÍTEMS
                 lugar_key_edit = st.session_state.edit_lugar.upper()
                 items_edit = list(PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).keys())
                 
@@ -805,203 +805,215 @@ with tab_config:
     with tab_precios:
         st.subheader("Editar Precios Base por Castillo/Lugar")
 
-        data_for_edit = []
-        for lugar, items in PRECIOS_BASE_CONFIG.items():
-            for item, precio in items.items():
-                data_for_edit.append({'Castillo/Lugar': lugar, 'Poción/Ítem': item, 'Precio Base ($)': precio})
-        
-        df_precios = pd.DataFrame(data_for_edit)
-        
-        edited_df = st.data_editor(
-            df_precios,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Precio Base ($)": st.column_config.NumberColumn(
-                    "Precio Base ($)",
-                    help="Valor de la atención sin descuentos ni comisiones.",
-                    format="$%d",
-                    min_value=0,
-                    step=1000
-                )
-            },
-            key="precios_data_editor"
-        )
-        
-        if st.button("💾 Guardar Precios Actualizados", type="primary", key="save_precios"):
-            if clave_ingresada == CLAVE_MAESTRA:
-                try:
-                    new_precios_config = {}
-                    for index, row in edited_df.iterrows():
-                        lugar = str(row['Castillo/Lugar']).upper() 
-                        item = str(row['Poción/Ítem'])
-                        precio = int(row['Precio Base ($)'])
-                        
-                        if lugar and item: 
-                            if lugar not in new_precios_config:
-                                new_precios_config[lugar] = {}
-                            new_precios_config[lugar][item] = precio
+        if not PRECIOS_BASE_CONFIG:
+            st.warning("No hay configuración de precios cargada. Vuelve a cargar la aplicación.")
+        else:
+            data_for_edit = []
+            for lugar, items in PRECIOS_BASE_CONFIG.items():
+                for item, precio in items.items():
+                    data_for_edit.append({'Castillo/Lugar': lugar, 'Poción/Ítem': item, 'Precio Base ($)': precio})
+            
+            df_precios = pd.DataFrame(data_for_edit)
+            
+            edited_df = st.data_editor(
+                df_precios,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "Precio Base ($)": st.column_config.NumberColumn(
+                        "Precio Base ($)",
+                        help="Valor de la atención sin descuentos ni comisiones.",
+                        format="$%d",
+                        min_value=0,
+                        step=1000
+                    )
+                },
+                key="precios_data_editor"
+            )
+            
+            if st.button("💾 Guardar Precios Actualizados", type="primary", key="save_precios"):
+                if clave_ingresada == CLAVE_MAESTRA:
+                    try:
+                        new_precios_config = {}
+                        for index, row in edited_df.iterrows():
+                            lugar = str(row['Castillo/Lugar']).upper() 
+                            item = str(row['Poción/Ítem'])
+                            precio = int(row['Precio Base ($)'])
+                            
+                            if lugar and item: 
+                                if lugar not in new_precios_config:
+                                    new_precios_config[lugar] = {}
+                                new_precios_config[lugar][item] = precio
 
-                    save_config(new_precios_config, PRECIOS_FILE)
-                    st.success("✅ Precios y Castillos/Lugares actualizados correctamente.")
-                    st.cache_data.clear() 
-                    time.sleep(1)
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error al guardar los precios: {e}")
-            else:
-                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
+                        save_config(new_precios_config, PRECIOS_FILE)
+                        st.success("✅ Precios y Castillos/Lugares actualizados correctamente.")
+                        st.cache_data.clear() 
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar los precios: {e}")
+                else:
+                    st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
 
 
     with tab_descuentos_fijos:
         st.subheader("Editar Descuentos Fijos por Castillo/Lugar (Aplicación Constante)")
         
-        df_descuentos = pd.DataFrame(
-            {'Castillo/Lugar': DESCUENTOS_LUGAR.keys(), 
-             'Desc. Fijo ($)': DESCUENTOS_LUGAR.values()}
-        )
-        
-        edited_df_desc = st.data_editor(
-            df_descuentos,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Desc. Fijo ($)": st.column_config.NumberColumn(
-                    "Descuento Fijo ($)",
-                    help="Descuento fijo aplicado antes de comisiones (Solo se usa si no hay regla condicional).",
-                    format="$%d",
-                    min_value=0,
-                    step=1000
-                )
-            },
-            key="descuentos_data_editor"
-        )
+        if not DESCUENTOS_LUGAR:
+             st.warning("No hay configuración de descuentos fijos cargada.")
+        else:
+            df_descuentos = pd.DataFrame(
+                {'Castillo/Lugar': DESCUENTOS_LUGAR.keys(), 
+                'Desc. Fijo ($)': DESCUENTOS_LUGAR.values()}
+            )
+            
+            edited_df_desc = st.data_editor(
+                df_descuentos,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "Desc. Fijo ($)": st.column_config.NumberColumn(
+                        "Descuento Fijo ($)",
+                        help="Descuento fijo aplicado antes de comisiones (Solo se usa si no hay regla condicional).",
+                        format="$%d",
+                        min_value=0,
+                        step=1000
+                    )
+                },
+                key="descuentos_data_editor"
+            )
 
-        if st.button("💾 Guardar Descuentos Fijos", type="primary", key="save_descuentos"):
-            if clave_ingresada == CLAVE_MAESTRA:
-                try:
-                    new_descuentos_config = {}
-                    for index, row in edited_df_desc.iterrows():
-                        lugar = str(row['Castillo/Lugar']).upper()
-                        descuento = int(row['Desc. Fijo ($)'])
+            if st.button("💾 Guardar Descuentos Fijos", type="primary", key="save_descuentos"):
+                if clave_ingresada == CLAVE_MAESTRA:
+                    try:
+                        new_descuentos_config = {}
+                        for index, row in edited_df_desc.iterrows():
+                            lugar = str(row['Castillo/Lugar']).upper()
+                            descuento = int(row['Desc. Fijo ($)'])
+                            
+                            if lugar:
+                                new_descuentos_config[lugar] = descuento
                         
-                        if lugar:
-                            new_descuentos_config[lugar] = descuento
-                    
-                    save_config(new_descuentos_config, DESCUENTOS_FILE)
-                    st.success("✅ Descuentos fijos por lugar actualizados correctamente.")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error al guardar los descuentos: {e}")
-            else:
-                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
+                        save_config(new_descuentos_config, DESCUENTOS_FILE)
+                        st.success("✅ Descuentos fijos por lugar actualizados correctamente.")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar los descuentos: {e}")
+                else:
+                    st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
 
     with tab_comisiones:
         st.subheader("Editar Comisiones por Método de Pago")
         
-        df_comisiones = pd.DataFrame(
-            {'Método de Pago': COMISIONES_PAGO.keys(), 
-             'Comisión (%)': [v * 100 for v in COMISIONES_PAGO.values()]}
-        )
+        if not COMISIONES_PAGO:
+             st.warning("No hay configuración de comisiones cargada.")
+        else:
+            df_comisiones = pd.DataFrame(
+                {'Método de Pago': COMISIONES_PAGO.keys(), 
+                'Comisión (%)': [v * 100 for v in COMISIONES_PAGO.values()]}
+            )
 
-        edited_df_com = st.data_editor(
-            df_comisiones,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Comisión (%)": st.column_config.NumberColumn(
-                    "Comisión (%)",
-                    help="Porcentaje de comisión a aplicar (ej: 3 para 3%).",
-                    format="%.2f%%",
-                    min_value=0.00,
-                    step=0.01
-                )
-            },
-            key="comisiones_data_editor"
-        )
-        
-        if st.button("💾 Guardar Comisiones de Pago", type="primary", key="save_comisiones"):
-            if clave_ingresada == CLAVE_MAESTRA:
-                try:
-                    new_comisiones_config = {}
-                    for index, row in edited_df_com.iterrows():
-                        metodo = str(row['Método de Pago']).upper()
-                        comision_pct = float(row['Comisión (%)']) / 100.0
+            edited_df_com = st.data_editor(
+                df_comisiones,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "Comisión (%)": st.column_config.NumberColumn(
+                        "Comisión (%)",
+                        help="Porcentaje de comisión a aplicar (ej: 3 para 3%).",
+                        format="%.2f%%",
+                        min_value=0.00,
+                        step=0.01
+                    )
+                },
+                key="comisiones_data_editor"
+            )
+            
+            if st.button("💾 Guardar Comisiones de Pago", type="primary", key="save_comisiones"):
+                if clave_ingresada == CLAVE_MAESTRA:
+                    try:
+                        new_comisiones_config = {}
+                        for index, row in edited_df_com.iterrows():
+                            metodo = str(row['Método de Pago']).upper()
+                            comision_pct = float(row['Comisión (%)']) / 100.0
+                            
+                            if metodo:
+                                new_comisiones_config[metodo] = comision_pct
                         
-                        if metodo:
-                            new_comisiones_config[metodo] = comision_pct
-                    
-                    save_config(new_comisiones_config, COMISIONES_FILE)
-                    st.success("✅ Comisiones por método de pago actualizadas correctamente.")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error al guardar las comisiones: {e}")
-            else:
-                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
+                        save_config(new_comisiones_config, COMISIONES_FILE)
+                        st.success("✅ Comisiones por método de pago actualizadas correctamente.")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar las comisiones: {e}")
+                else:
+                    st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
 
     with tab_reglas:
         st.subheader("📅 Descuentos Condicionales por Día de la Semana")
         st.info("Aquí se definen descuentos específicos por día que **SOBRESCRIBEN** el Descuento Fijo del Lugar. Use 0 para mantener el descuento fijo normal del lugar.")
         
-        data_reglas = []
-        for lugar in LUGARES: 
-            reglas_lugar = DESCUENTOS_REGLAS.get(lugar.upper(), {}) # Usamos .upper() para asegurar consistencia
-            for dia in DIAS_SEMANA:
-                data_reglas.append({
-                    'Castillo/Lugar': lugar,
-                    'Día de la Semana': dia,
-                    'Desc. Condicional ($)': reglas_lugar.get(dia, 0)
-                })
-                
-        df_reglas = pd.DataFrame(data_reglas)
-        
-        edited_df_reglas = st.data_editor(
-            df_reglas,
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config={
-                "Desc. Condicional ($)": st.column_config.NumberColumn(
-                    "Descuento Condicional ($)",
-                    help="Descuento aplicado ÚNICAMENTE si la fecha de atención coincide con el día.",
-                    format="$%d",
-                    min_value=0,
-                    step=1000
-                ),
-                "Castillo/Lugar": st.column_config.TextColumn(disabled=True),
-                "Día de la Semana": st.column_config.TextColumn(disabled=True),
-            },
-            key="reglas_data_editor"
-        )
-        
-        if st.button("💾 Guardar Reglas Condicionales", type="primary", key="save_reglas"):
-            if clave_ingresada == CLAVE_MAESTRA:
-                try:
-                    new_reglas_config = {}
+        if not LUGARES:
+            st.warning("No hay lugares configurados para definir reglas condicionales.")
+        else:
+            data_reglas = []
+            for lugar in LUGARES: 
+                reglas_lugar = DESCUENTOS_REGLAS.get(lugar.upper(), {})
+                for dia in DIAS_SEMANA:
+                    data_reglas.append({
+                        'Castillo/Lugar': lugar,
+                        'Día de la Semana': dia,
+                        'Desc. Condicional ($)': reglas_lugar.get(dia, 0)
+                    })
                     
-                    for index, row in edited_df_reglas.iterrows():
-                        lugar = str(row['Castillo/Lugar']).upper()
-                        dia = str(row['Día de la Semana']).upper()
-                        descuento = int(row['Desc. Condicional ($)'])
+            df_reglas = pd.DataFrame(data_reglas)
+            
+            edited_df_reglas = st.data_editor(
+                df_reglas,
+                use_container_width=True,
+                num_rows="dynamic",
+                column_config={
+                    "Desc. Condicional ($)": st.column_config.NumberColumn(
+                        "Descuento Condicional ($)",
+                        help="Descuento aplicado ÚNICAMENTE si la fecha de atención coincide con el día.",
+                        format="$%d",
+                        min_value=0,
+                        step=1000
+                    ),
+                    "Castillo/Lugar": st.column_config.TextColumn(disabled=True),
+                    "Día de la Semana": st.column_config.TextColumn(disabled=True),
+                },
+                key="reglas_data_editor"
+            )
+            
+            if st.button("💾 Guardar Reglas Condicionales", type="primary", key="save_reglas"):
+                if clave_ingresada == CLAVE_MAESTRA:
+                    try:
+                        new_reglas_config = {}
                         
-                        if lugar and dia:
-                            if lugar not in new_reglas_config:
-                                new_reglas_config[lugar] = {}
-                            new_reglas_config[lugar][dia] = descuento
+                        for index, row in edited_df_reglas.iterrows():
+                            lugar = str(row['Castillo/Lugar']).upper()
+                            dia = str(row['Día de la Semana']).upper()
+                            descuento = int(row['Desc. Condicional ($)'])
                             
-                    save_config(new_reglas_config, REGLAS_FILE)
-                    st.success("✅ Reglas condicionales por día actualizadas correctamente.")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error al guardar las reglas: {e}")
-            else:
-                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
+                            if lugar and dia:
+                                if lugar not in new_reglas_config:
+                                    new_reglas_config[lugar] = {}
+                                new_reglas_config[lugar][dia] = descuento
+                                
+                        save_config(new_reglas_config, REGLAS_FILE)
+                        st.success("✅ Reglas condicionales por día actualizadas correctamente.")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar las reglas: {e}")
+                else:
+                    st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
