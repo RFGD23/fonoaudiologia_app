@@ -1,16 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-import locale
-
-# Establecer la configuración regional para formato de moneda (ajusta si es necesario)
-try:
-    locale.setlocale(locale.LC_ALL, 'es_CL.UTF-8')
-except locale.Error:
-    try:
-        locale.setlocale(locale.LC_ALL, 'es_ES.UTF-8')
-    except locale.Error:
-        pass # Usa la configuración predeterminada si falla
+# Nota: Se eliminó 'locale' para evitar errores de despliegue, el formato de moneda se hace con f-strings
 
 # ===============================================
 # 1. CONFIGURACIÓN DE LA PÁGINA
@@ -26,6 +17,7 @@ st.set_page_config(
 # ===============================================
 
 # Conexión al Pooler de Sesiones de Supabase
+# Esta debe ser la única llamada a st.connection en tu aplicación.
 conn = st.connection(
     "supabase_pooler", 
     type="sql",
@@ -40,44 +32,22 @@ conn = st.connection(
 @st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # *** CONSULTA SQL FINAL CON ALIAS LIMPIOS ***
-        # Seleccionamos todas las columnas usando alias en minúsculas para garantizar el éxito.
-        # Basado en tu metadata:
-        query = """
-        SELECT
-            desc_adicional AS desc_adicional,
-            desc_fijo_lugar AS desc_fijo_lugar,
-            desc_tarjeta AS desc_tarjeta,
-            fecha AS fecha,
-            item AS item,
-            lugar AS lugar,
-            metodo_pago AS metodo_pago,
-            paciente AS paciente,
-            total_recibido AS total_recibido,
-            valor_bruto AS valor_bruto
-        FROM public."atenciones"
-        ORDER BY fecha DESC;
-        """
-        
-        # Ejecutamos la consulta con la ordenación en SQL para mayor eficiencia
-        # (Ahora que estamos 100% seguros del nombre 'fecha')
-        df = conn.query(query)
+        # CONSULTA SQL SIMPLE: La forma más estable para el Pooler.
+        df = conn.query('SELECT * FROM public."atenciones";')
 
-        # La consulta ahora garantiza nombres en minúsculas y sin caracteres invisibles.
+        # *** SOLUCIÓN ROBUSTA AL KEYERROR: 'fecha' ***
+        # Limpieza agresiva de nombres de columna (quita espacios y convierte a minúsculas)
+        df.columns = df.columns.str.strip().str.lower()
         
-        # Conversión de fecha
+        # Ordenación y conversión de fecha en Pandas.
+        df = df.sort_values(by="fecha", ascending=False)
         df['fecha'] = pd.to_datetime(df['fecha']) 
         
         return df
         
     except Exception as e:
-        # Si el error persiste, el problema está en la tabla, no en el nombre de la columna 'fecha'.
-        st.error(f"Error CRÍTICO al cargar datos. El problema no es 'fecha' sino otra columna o la tabla. Mensaje: {e}")
-        return pd.DataFrame()
-        
-    except Exception as e:
         # Mensaje de error final
-        st.error(f"Error al cargar datos de Supabase. Mensaje: {e}")
+        st.error(f"Error CRÍTICO al cargar datos de Supabase. Mensaje: {e}")
         return pd.DataFrame()
 
 # ===============================================
@@ -101,29 +71,33 @@ else:
     # SECCIÓN PRINCIPAL DEL DASHBOARD 
     # ----------------------------------------------------
     
+    # Formato de moneda simplificado para evitar errores de locale
+    def format_currency(value):
+        return f"${value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     col1, col2, col3 = st.columns(3)
     
     # KPI 1: Total de Ingresos
-    # Nota: Asumiendo que la columna de ingresos se llama 'total_recibido'
+    # Nota: Usamos el nombre limpio 'total_recibido'
     total_ingresos = df['total_recibido'].sum()
     col1.metric(
         label="💰 Total de Ingresos Recibidos", 
-        value=locale.currency(total_ingresos, grouping=True)
+        value=format_currency(total_ingresos)
     )
 
     # KPI 2: Número Total de Atenciones
     total_atenciones = len(df)
     col2.metric(
         label="👥 Total de Atenciones Registradas", 
-        value=f"{total_atenciones:,}"
+        value=f"{total_atenciones:,}".replace(",", ".")
     )
     
     # KPI 3: Valor Bruto Promedio
-    # Nota: Asumiendo que la columna de valor bruto se llama 'valor_bruto'
+    # Nota: Usamos el nombre limpio 'valor_bruto'
     valor_bruto_promedio = df['valor_bruto'].mean()
     col3.metric(
         label="💸 Valor Bruto Promedio", 
-        value=locale.currency(valor_bruto_promedio, grouping=True)
+        value=format_currency(valor_bruto_promedio)
     )
 
     st.markdown("---")
@@ -133,7 +107,7 @@ else:
     
     # Agrupar los ingresos por la columna limpia 'fecha'
     ingresos_diarios = df.groupby('fecha')['total_recibido'].sum().reset_index()
-    ingresos_diarios.columns = ['Fecha', 'Ingresos'] # Renombrar para claridad en el gráfico
+    ingresos_diarios.columns = ['Fecha', 'Ingresos'] # Renombrar para claridad
     
     st.line_chart(ingresos_diarios.set_index('Fecha')['Ingresos'])
 
