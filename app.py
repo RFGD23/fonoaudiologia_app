@@ -15,20 +15,22 @@ st.set_page_config(
 # 2. FUNCIONES DE PERSISTENCIA (CONEXIÓN Y CARGA)
 # ===============================================
 
-# ¡CONEXIÓN DIRECTA A LA BASE DE DATOS POSTGRES!
-# Esto evita el error "duplicate SASL authentication request" y mejora la estabilidad.
+# Conexión Directa a PostgreSQL (sin Pooler)
 conn = st.connection(
-    "supabase_direct",  # Nombre de conexión actualizado
+    "supabase_direct",  
     type="sql",
     dialect="postgresql",
-    # *** CAMBIO CLAVE 1: HOST DIRECTO (Usando tu identificador) ***
+    # HOST DIRECTO
     host="emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
     database="postgres",
-    # *** CAMBIO CLAVE 2: USERNAME SIMPLE 'postgres' ***
-    username="postgres", 
-    password="Domileo1702" 
+    # *** USAR EL NOMBRE DE USUARIO COMPLETO SIN EL PUNTO (EMERGENCIAS) ***
+    username="postgres_emnqztaxybhbmkuryhem", 
+    password="DomiLeo1702" 
 )
+
+@st.cache_data(ttl=3600)
+# ... el resto de la función es el código robusto que ya tenemos ...
 
 
 @st.cache_data(ttl=3600)
