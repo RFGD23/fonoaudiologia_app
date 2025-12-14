@@ -241,7 +241,7 @@ if not df.empty:
         df = df[df['Ítem'] == filtro_item]
     
     # ----------------------------------------------------
-    # FILTRO POR RANGO DE FECHA (SOLUCIÓN DEFINITIVA DE ERROR)
+    # FILTRO POR RANGO DE FECHA (SOLUCIÓN DEFINITIVA DE ERRORES)
     # ----------------------------------------------------
     
     # Si después de los filtros Lugar/Ítem el DF está vacío, detenemos la ejecución
@@ -249,21 +249,21 @@ if not df.empty:
         st.warning("No hay datos disponibles para la combinación de Lugar/Ítem seleccionada.")
         st.stop()
         
-    # --- NUEVA LÓGICA DE VALIDACIÓN (Elimina NaT antes de calcular min/max) ---
+    # --- LÓGICA DE VALIDACIÓN DE FECHAS SEGURA ---
     
-    # 1. Crear un DataFrame con solo fechas válidas (no NaT)
+    # 1. Crear un DataFrame con solo fechas válidas (no NaT) para calcular min/max
     df_valid_dates = df.dropna(subset=['Fecha'])
 
     if df_valid_dates.empty:
-        # 2. Si no quedan fechas válidas, usamos la fecha de hoy como rango por defecto
+        # Si no quedan fechas válidas, usamos la fecha de hoy como rango por defecto
         min_date = date.today()
         max_date = date.today()
     else:
-        # 3. Calculamos min/max solo en los datos válidos
+        # 2. Calculamos min/max solo en los datos válidos
         min_date = df_valid_dates['Fecha'].min().date()
         max_date = df_valid_dates['Fecha'].max().date()
 
-        # 4. Seguridad: corregir si por error la fecha mínima es inválida (ej. 1970)
+        # 3. Seguridad: corregir si la fecha mínima es inválida
         if min_date.year < 2000:
             min_date = date.today()
             max_date = date.today()
@@ -275,7 +275,7 @@ if not df.empty:
     # Aseguramos que la fecha inicial por defecto sea válida dentro del rango
     fecha_default_inicio = min_date
     if min_date > max_date:
-        fecha_default_inicio = max_date # Si por alguna razón min es mayor que max, usamos max
+        fecha_default_inicio = max_date 
         
     fecha_inicio = col_start.date_input(
         "📅 Fecha de Inicio", 
@@ -289,6 +289,10 @@ if not df.empty:
         min_value=min_date, 
         max_value=max_date
     )
+    
+    # --- CORRECCIÓN FINAL PARA EL TypeError ---
+    # Eliminar cualquier NaN/NaT en la columna Fecha ANTES de aplicar la comparación de filtro
+    df = df.dropna(subset=['Fecha']) 
     
     # Aplicar el filtro final al DataFrame
     df_filtrado = df[
