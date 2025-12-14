@@ -15,6 +15,7 @@ DATA_FILE = 'atenciones_registradas.csv'
 PRECIOS_FILE = 'precios_base.json'
 DESCUENTOS_FILE = 'descuentos_lugar.json'
 COMISIONES_FILE = 'comisiones_pago.json'
+REGLAS_FILE = 'descuentos_reglas.json' # <-- NUEVO ARCHIVO
 
 def load_config(filename):
     """Carga la configuración desde un archivo JSON."""
@@ -36,15 +37,24 @@ try:
     PRECIOS_BASE_CONFIG = load_config(PRECIOS_FILE)
     DESCUENTOS_LUGAR = load_config(DESCUENTOS_FILE)
     COMISIONES_PAGO = load_config(COMISIONES_FILE)
+    DESCUENTOS_REGLAS = load_config(REGLAS_FILE) # <-- Carga de las nuevas reglas
 except:
     # Fallback si no existen los archivos JSON o hay error
     PRECIOS_BASE_CONFIG = {'ALERCE': {'Item1': 30000, 'Item2': 40000}, 'AMAR AUSTRAL': {'ItemA': 25000, 'ItemB': 35000}}
     DESCUENTOS_LUGAR = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
     COMISIONES_PAGO = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
+    # Fallback para las nuevas reglas si no existe el archivo
+    DESCUENTOS_REGLAS = {
+        'AMAR AUSTRAL': {
+            'LUNES': 0, 'MARTES': 8000, 'MIÉRCOLES': 0, 
+            'JUEVES': 0, 'VIERNES': 6500, 'SÁBADO': 0, 'DOMINGO': 0
+        }
+    }
 
 
 LUGARES = sorted(list(PRECIOS_BASE_CONFIG.keys()))
 METODOS_PAGO = list(COMISIONES_PAGO.keys())
+DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO']
 
 
 # ===============================================
@@ -82,21 +92,30 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     precio_base = PRECIOS_BASE_CONFIG.get(lugar, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
+    
+    # -------------------------------------------------------------------
+    # --- LÓGICA DE DESCUENTO FIJO CONDICIONAL (Administrable) ---
+    # -------------------------------------------------------------------
+    
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
-    # LÓGICA CONDICIONAL: AMAR AUSTRAL (Martes/Viernes)
-    if lugar == 'AMAR AUSTRAL':
+    if lugar in DESCUENTOS_REGLAS:
         if isinstance(fecha_atencion, pd.Timestamp):
-            dia_semana = fecha_atencion.weekday()
+            dia_semana_num = fecha_atencion.weekday()
         elif isinstance(fecha_atencion, date):
-            dia_semana = fecha_atencion.weekday()
+            dia_semana_num = fecha_atencion.weekday()
         else:
-            dia_semana = date.today().weekday()
+            dia_semana_num = date.today().weekday()
             
-        if dia_semana == 1:  # Martes
-            desc_fijo_lugar = 8000
-        elif dia_semana == 4:  # Viernes
-            desc_fijo_lugar = 6500
+        dia_nombre = DIAS_SEMANA[dia_semana_num]
+        
+        # Si existe una regla específica para el día y no es 0, la usamos en lugar del valor base
+        regla_especial = DESCUENTOS_REGLAS[lugar].get(dia_nombre)
+        if regla_especial is not None and regla_especial != 0:
+            desc_fijo_lugar = regla_especial 
+
+    # -------------------------------------------------------------------
+    # -------------------------------------------------------------------
 
     # Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
@@ -262,8 +281,9 @@ with tab_registro:
             # Mostrar el resultado final y los detalles del descuento
             st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(metodo_pago, 0.00)*100:.0f}%):** ${resultados['desc_tarjeta']:,.0f}".replace(",", "."))
             
+            # Etiqueta dinámica para el descuento fijo/condicional
             desc_lugar_label = f"Tributo al Castillo ({lugar_seleccionado})"
-            if lugar_seleccionado == 'AMAR AUSTRAL':
+            if lugar_seleccionado in DESCUENTOS_REGLAS:
                 dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                 desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
 
@@ -629,7 +649,7 @@ with tab_dashboard:
                 )
                 
                 desc_lugar_label = f"Tributo al Castillo ({st.session_state.edit_lugar})"
-                if st.session_state.edit_lugar == 'AMAR AUSTRAL':
+                if st.session_state.edit_lugar in DESCUENTOS_REGLAS:
                     dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
                     desc_lugar_label += f" ({dias_semana.get(st.session_state.edit_fecha.weekday())})" 
 
@@ -710,7 +730,12 @@ with tab_config:
         key="admin_password"
     )
     
-    tab_precios, tab_descuentos, tab_comisiones = st.tabs(["💰 Precios Base/Ítems", "📍 Descuentos Fijos por Lugar", "💳 Comisiones por Pago"])
+    tab_precios, tab_descuentos_fijos, tab_comisiones, tab_reglas = st.tabs([
+        "💰 Precios Base/Ítems", 
+        "📍 Descuentos Fijos por Lugar", 
+        "💳 Comisiones por Pago",
+        "📅 Reglas Condicionales" # <-- NUEVA PESTAÑA
+    ])
 
     with tab_precios:
         st.subheader("Editar Precios Base por Castillo/Lugar")
@@ -769,8 +794,8 @@ with tab_config:
                 st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
 
 
-    with tab_descuentos:
-        st.subheader("Editar Descuentos Fijos por Castillo/Lugar")
+    with tab_descuentos_fijos:
+        st.subheader("Editar Descuentos Fijos por Castillo/Lugar (Aplicación Constante)")
         
         # Conversión del diccionario a DataFrame
         df_descuentos = pd.DataFrame(
@@ -785,7 +810,7 @@ with tab_config:
             column_config={
                 "Desc. Fijo ($)": st.column_config.NumberColumn(
                     "Descuento Fijo ($)",
-                    help="Descuento fijo aplicado antes de comisiones.",
+                    help="Descuento fijo aplicado antes de comisiones (Solo se usa si no hay regla condicional).",
                     format="$%d",
                     min_value=0,
                     step=1000
@@ -866,5 +891,68 @@ with tab_config:
                     
                 except Exception as e:
                     st.error(f"❌ Error al guardar las comisiones: {e}")
+            else:
+                st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
+
+    with tab_reglas:
+        st.subheader("📅 Descuentos Condicionales por Día de la Semana")
+        st.info("Aquí se definen descuentos específicos por día que **SOBRESCRIBEN** el Descuento Fijo del Lugar. Use 0 para mantener el descuento fijo normal del lugar.")
+        
+        # 1. Preparar el DataFrame para la edición de reglas
+        data_reglas = []
+        for lugar in LUGARES: # Iteramos sobre todos los lugares existentes
+            reglas_lugar = DESCUENTOS_REGLAS.get(lugar, {})
+            for dia in DIAS_SEMANA:
+                data_reglas.append({
+                    'Castillo/Lugar': lugar,
+                    'Día de la Semana': dia,
+                    'Desc. Condicional ($)': reglas_lugar.get(dia, 0)
+                })
+                
+        df_reglas = pd.DataFrame(data_reglas)
+        
+        edited_df_reglas = st.data_editor(
+            df_reglas,
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "Desc. Condicional ($)": st.column_config.NumberColumn(
+                    "Descuento Condicional ($)",
+                    help="Descuento aplicado ÚNICAMENTE si la fecha de atención coincide con el día.",
+                    format="$%d",
+                    min_value=0,
+                    step=1000
+                ),
+                # El lugar y el día deben ser columnas no editables para mantener la coherencia
+                "Castillo/Lugar": st.column_config.TextColumn(disabled=True),
+                "Día de la Semana": st.column_config.TextColumn(disabled=True),
+            },
+            key="reglas_data_editor"
+        )
+        
+        if st.button("💾 Guardar Reglas Condicionales", type="primary", key="save_reglas"):
+            if clave_ingresada == CLAVE_MAESTRA:
+                try:
+                    new_reglas_config = {}
+                    
+                    # Reconstruir el diccionario jerárquico
+                    for index, row in edited_df_reglas.iterrows():
+                        lugar = str(row['Castillo/Lugar']).upper()
+                        dia = str(row['Día de la Semana']).upper()
+                        descuento = int(row['Desc. Condicional ($)'])
+                        
+                        if lugar and dia:
+                            if lugar not in new_reglas_config:
+                                new_reglas_config[lugar] = {}
+                            new_reglas_config[lugar][dia] = descuento
+                            
+                    save_config(new_reglas_config, REGLAS_FILE)
+                    st.success("✅ Reglas condicionales por día actualizadas correctamente.")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error al guardar las reglas: {e}")
             else:
                 st.error("❌ Clave de seguridad incorrecta. No se guardaron los cambios.")
