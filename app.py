@@ -17,12 +17,14 @@ PRECIOS_BASE = {
     ('DOMICILIO', 'PACIENTE'): 30000, ('DOMICILIO', 'LAVADO OIDO'): 25000,
     ('ALERCE', '5 SABADOS'): 25000, ('ALERCE', '4 SABADOS'): 31250,
 }
-
 # --- Reglas de Descuento (Fijas por Lugar) ---
+# NOTA: AMAR AUSTRAL fue eliminado de aquí porque su descuento es dinámico por día.
 DESCUENTOS_LUGAR = {
-    'LIBEDUL': 0, 'ALERCE': 0, 'DOMICILIO': 0, 
-    # El valor de CPM debe ser confirmado, este es un valor estimado por liquidación.
-    'CPM': 14610, # Esto refleja el 48.7% que queda líquido de los 30000.
+    'LIBEDUL': 0, 
+    'ALERCE': 0, 
+    'DOMICILIO': 0, 
+    # Valor fijo de ejemplo. Confirma la lógica real (si es % o fijo).
+    'CPM': 14610, 
 }
 
 # --- Reglas de Comisión por Método de Pago ---
@@ -32,6 +34,7 @@ COMISIONES_PAGO = {
     'TARJETA': 0.05, # 5% de comisión.
 }
 
+# Variables de la aplicación
 LUGARES = sorted(list(set(l for l, i in PRECIOS_BASE.keys())))
 METODOS_PAGO = list(COMISIONES_PAGO.keys())
 DATA_FILE = 'atenciones_registradas.csv'
@@ -56,19 +59,17 @@ def save_data(df):
     """Guarda el DataFrame actualizado en el archivo CSV."""
     df.to_csv(DATA_FILE, index=False)
 
-# Mapeo del día de la semana (Lunes es 0, Domingo es 6)
-# Martes (dayofweek=1) = 8000
-# Viernes (dayofweek=4) = 6500
-
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
-    """Calcula el ingreso final líquido basado en las reglas del negocio, incluyendo la lógica condicional por día."""
-    
+    """
+    Calcula el ingreso final líquido basado en las reglas del negocio, 
+    incluyendo la lógica condicional por día para AMAR AUSTRAL.
+    """
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else PRECIOS_BASE.get((lugar, item), 0)
     
     # 1. Descuento Fijo por Lugar (Base)
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar, 0)
     
-    # 2. LÓGICA CONDICIONAL: AMAR AUSTRAL (Martes/Viernes)
+    # LÓGICA CONDICIONAL SOLICITADA: AMAR AUSTRAL (Martes/Viernes)
     if lugar == 'AMAR AUSTRAL':
         # date.weekday() retorna 0 para Lunes y 6 para Domingo.
         dia_semana = fecha_atencion.weekday() 
@@ -77,17 +78,16 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
             desc_fijo_lugar = 8000
         elif dia_semana == 4:  # Viernes
             desc_fijo_lugar = 6500
-        # Si es otro día en AMAR AUSTRAL, el descuento sería 0, a menos que haya otra regla.
-        # Por ahora, se asume 0 si no es Martes ni Viernes.
+        # Si es otro día, el descuento se mantiene en 0 (si no hay otra regla)
 
-    # 3. Aplicar Comisión de Tarjeta
+    # 2. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago, 0.00)
     desc_tarjeta = valor_bruto * comision_pct
     
-    # 4. Cálculo final del total recibido (Líquido)
+    # 3. Cálculo final del total recibido (Líquido)
     total_recibido = (
         valor_bruto 
-        - desc_fijo_lugar  # Ahora incluye el descuento condicional de AMAR
+        - desc_fijo_lugar  # Incluye el descuento condicional de AMAR
         - desc_tarjeta 
         - desc_adicional_manual
     )
@@ -146,29 +146,27 @@ with st.expander("➕ Ingresar Nueva Atención", expanded=True):
             help="Ingresa un valor positivo para descuentos o negativo para cargos."
         )
         
-            # Ejecutar el cálculo central en tiempo real
-            resultados = calcular_ingreso(
+        # Ejecutar el cálculo central en tiempo real
+        resultados = calcular_ingreso(
             lugar_seleccionado, 
             item_seleccionado, 
             metodo_pago, 
             desc_adicional_manual,
-            fecha_atencion=fecha,  # <--- SE AGREGA LA VARIABLE FECHA
+            fecha_atencion=fecha,  # <--- SE PASA LA FECHA PARA LA LÓGICA DE AMAR
             valor_bruto_override=valor_bruto_input
         )
         
-        # Mostrar el resultado final
-        # Mostrar los resultados del cálculo (dentro de la interfaz de cálculo)
-        # ... otras métricas ...
-
-        desc_lugar_label = f"Descuento Fijo Lugar ({lugar_seleccionado})"
-        if lugar_seleccionado == 'AMAR AUSTRAL':
-            desc_lugar_label += f" ({fecha.strftime('%A')})" # Muestra el día de la semana
-    
-        st.metric(
-        label=desc_lugar_label, 
-        value=f"${resultados['desc_fijo_lugar']:,.0f}".replace(",", ".")
-        )
+        # Mostrar el resultado final y los detalles del descuento
         st.warning(f"**Desc. Tarjeta ({COMISIONES_PAGO.get(metodo_pago, 0.00)*100:.0f}%):** ${resultados['desc_tarjeta']:,.0f}".replace(",", "."))
+        
+        desc_lugar_label = f"Desc. Fijo Lugar ({lugar_seleccionado})"
+        # Muestra el día de la semana si es AMAR AUSTRAL para clarificar
+        if lugar_seleccionado == 'AMAR AUSTRAL':
+            # Mapeo simple del día de la semana (solo para la visualización, Monday=Lunes, Tuesday=Martes...)
+            dias_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
+            desc_lugar_label += f" ({dias_semana.get(fecha.weekday())})" 
+
+        st.info(f"**{desc_lugar_label}:** ${resultados['desc_fijo_lugar']:,.0f}".replace(",", "."))
         
         st.markdown("###")
         st.metric(
@@ -219,14 +217,15 @@ if not df.empty:
     df['Mes_Año'] = df['Fecha'].dt.to_period('M').astype(str)
     resumen_mensual = df.groupby('Mes_Año')['Total Recibido'].sum().reset_index()
     
-    # Mostrar Gráfico de Evolución Mensual 
+    # Mostrar Gráfico de Evolución Mensual
     st.subheader("Evolución Mensual de Ingresos Líquidos")
+    # 
     st.bar_chart(resumen_mensual.set_index('Mes_Año'), color="#4c78a8")
 
     # Análisis por Lugar (Tipo Torta)
     st.subheader("Distribución de Ingresos por Centro de Atención")
     resumen_lugar = df.groupby("Lugar")["Total Recibido"].sum().reset_index()
-    # Muestra un gráfico de torta con la distribución de ingresos por lugar. 
+    # 
     st.dataframe(resumen_lugar, use_container_width=True) # Mostrar tabla de datos
 
     # Descarga de datos
