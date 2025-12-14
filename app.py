@@ -5,6 +5,7 @@ import os
 import json 
 import time 
 import base64 
+import plotly.express as px  # <-- ¡CORRECCIÓN: IMPORTACIÓN DE PLOTLY EXPRESS!
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -139,10 +140,9 @@ def set_background(png_file):
     """Establece la imagen de fondo usando CSS inyectado y transparencia."""
     bin_str = get_base64_of_file(png_file)
     
-    # 🚨 LÍNEA DE DIAGNÓSTICO 🚨
-    # Si la cadena es muy corta, significa que la imagen no se cargó correctamente.
+    # 🚨 LÍNEA DE DIAGNÓSTICO (Silenciosa) 🚨
     if len(bin_str) < 100:
-        # La advertencia real la da la función get_base64_of_file
+        # Si la imagen no se carga, no inyectamos CSS de fondo para evitar problemas
         return
     # ------------------------------------
 
