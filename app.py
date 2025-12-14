@@ -32,6 +32,7 @@ COMISIONES_PAGO = {
     'EFECTIVO': 0.00,
     'TRANSFERENCIA': 0.00,
     'TARJETA': 0.05, # 5% de comisión.
+    'AMAR AUSTRAL': 0.05, # 5% de comisión. Independiente de la forma de pago
 }
 
 # Variables de la aplicación
