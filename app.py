@@ -17,40 +17,30 @@ st.set_page_config(
 
 # ¡CONEXIÓN DIRECTA ESTABILIZADA!
 # Esto evita el Pooler (PGBouncer) y usa las credenciales estándar.
+# En app.py:
 conn = st.connection(
     "supabase_direct",  
     type="sql",
     dialect="postgresql",
-    # *** CAMBIO CLAVE 1: HOST SIN 'db.' (Versión más compatible) ***
+    # HOST DIRECTO
     host="emnqztaxybhbmkuryhem.supabase.co", 
     port=5432, 
     database="postgres",
-    # *** CAMBIO CLAVE 2: USERNAME SIMPLE 'postgres' ***
+    # USERNAME SIMPLE
     username="postgres", 
     password="DomiLeo1702" 
 )
 
 @st.cache_data(ttl=3600)
-# ... el resto de la función load_data_from_db() y el dashboard se mantienen ...
-
-@st.cache_data(ttl=3600)
 def load_data_from_db():
     try:
-        # CONSULTA SQL SIMPLE: La forma más estable para el Pooler.
+        # Consulta SQL estable con limpieza de columnas
         df = conn.query('SELECT * FROM public."atenciones";')
-
-        # *** SOLUCIÓN ROBUSTA AL KEYERROR: 'fecha' ***
-        # Limpieza agresiva de nombres de columna (quita espacios y convierte a minúsculas)
         df.columns = df.columns.str.strip().str.lower()
-        
-        # Ordenación y conversión de fecha en Pandas.
         df = df.sort_values(by="fecha", ascending=False)
         df['fecha'] = pd.to_datetime(df['fecha']) 
-        
         return df
-        
     except Exception as e:
-        # Mensaje de error final
         st.error(f"Error CRÍTICO al cargar datos de Supabase. Mensaje: {e}")
         return pd.DataFrame()
 
