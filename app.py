@@ -39,16 +39,19 @@ METODOS_PAGO = list(COMISIONES_PAGO.keys())
 # 2. FUNCIONES DE PERSISTENCIA (AÑADIDO PARA SUPABASE)
 # ===============================================
 
-# CAMBIO CRÍTICO: Conexión directa para evitar problemas de lectura de secrets.toml
+# ¡SOLUCIÓN FINAL: CONEXIÓN DIRECTA USANDO EL POOLER DE SESIONES!
 conn = st.connection(
-    "supabase_direct", 
+    "supabase_pooler", 
     type="sql",
     dialect="postgresql",
-    host="db.emnqztaxybhbmkuryhem.supabase.co", 
-    port=5432,
+    # HOST Y PUERTO DEL POOLER:
+    host="aws-1-us-east-1.pooler.supabase.com", 
+    port=5432, 
     database="postgres",
-    username="postgres",
-    password="Domileo1702" # <--- TU CONTRASEÑA MÁS RECIENTE
+    # USUARIO COMPLETO (Pooler requiere la referencia del proyecto):
+    username="postgres.emnqztaxybhbmkuryhem", 
+    # CONTRASEÑA REAL:
+    password="[DomiLeo1702]" # Asegúrate de que esta sea correcta
 )
 @st.cache_data(ttl=3600) # Carga los datos y los guarda en caché por 1 hora
 def load_data_from_db():
