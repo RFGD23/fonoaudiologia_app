@@ -466,13 +466,13 @@ def delete_record_callback(record_id):
 
 
 def edit_record_callback(record_id):
-    """Callback para establecer el ID a editar y recargar la página."""
+    """Callback para establecer el ID a editar. Se eliminó st.rerun()."""
     # LIMPIEZA PREVENTIVA: Si ya hay un formulario de edición abierto, límpialo primero.
     if st.session_state.edited_record_id is not None:
         _cleanup_edit_state() 
         
     st.session_state.edited_record_id = record_id
-    st.rerun() # FORZAR RERUN INMEDIATO
+    # st.rerun() fue eliminado, confiamos en el rerun automático de Streamlit.
 
 
 # --- CALLBACK DE SUBMIT DE FORMULARIO DE REGISTRO
@@ -516,7 +516,7 @@ def submit_and_reset():
     load_data_from_db.clear() 
     st.session_state.atenciones_df = load_data_from_db() 
     
-    st.session_state['save_status'] = f"🎉 ¡Aventura registrada para {paciente_nombre_guardar}! El tesoro es {format_currency(resultados_finales['total_recibido'])}"
+    st.session_state['save_status'] = f"🎉 ¡Aventura registrada para {paciente_nombre_guardar}! El tesoro es {format_currency(resultados['total_recibido'])}"
 
     # --- LÓGICA DE REINICIO MANUAL DE TODOS LOS WIDGETS ---
     default_lugar = LUGARES[0] if LUGARES else ''
@@ -1068,53 +1068,6 @@ with tab_dashboard:
                 
             # 🚨 El espacio donde estaba el botón de eliminación queda vacío para mantener la estabilidad. 🚨
         
-        # =================================================================
-        # -----------------------------------------------------------------
-        # DIBUJAR TABLA DE REGISTROS (SOLO SI NO HAY ID EN EDICIÓN)
-        # -----------------------------------------------------------------
-        else:
-            st.subheader("🗺️ Detalles de las Aventuras Registradas")
-            st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición. La tabla está ordenada por **ID Ascendente (1, 2, 3...)**.")
-
-            # 1. Definir columnas y anchos para la tabla simulada
-            cols_widths = [1, 0.5, 1.2, 1.5, 1.5, 2, 1.2, 1.2, 1] 
-            cols_names = ["", "ID", "Fecha", "Lugar", "Ítem", "Paciente", "Valor Bruto", "Total Recibido", "Ajustes"]
-
-            # 2. Encabezados de la tabla
-            header_cols = st.columns(cols_widths)
-            for i, name in enumerate(cols_names):
-                header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
-            st.markdown("---")
-
-            # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
-            for index, row in df.iterrows():
-                
-                # Formatear datos
-                fecha_str = row['Fecha'].strftime('%Y-%m-%d')
-                bruto_str = format_currency(row['Valor Bruto'])
-                neto_str = format_currency(row['Total Recibido'])
-                ajustes_str = format_currency(row['Desc. Adicional'] + row['Desc. Tarjeta'] + row['Desc. Fijo Lugar'])
-                
-                # Crear las columnas para la fila actual
-                data_cols = st.columns(cols_widths)
-
-                # Botón de edición - CLAVE DINÁMICA ASEGURADA
-                with data_cols[0]:
-                    st.button("Editar ✏️", key=f"edit_btn_{row['id']}", on_click=edit_record_callback, args=(row['id'],))
-                
-                # Datos de la fila
-                data_cols[1].markdown(f"<span class='data-row'>{row['id']}</span>", unsafe_allow_html=True)
-                data_cols[2].markdown(f"<span class='data-row'>{fecha_str}</span>", unsafe_allow_html=True)
-                data_cols[3].markdown(f"<span class='data-row'>{row['Lugar']}</span>", unsafe_allow_html=True)
-                data_cols[4].markdown(f"<span class='data-row'>{row['Ítem']}</span>", unsafe_allow_html=True)
-                data_cols[5].markdown(f"<span class='data-row'>{row['Paciente']}</span>", unsafe_allow_html=True)
-                data_cols[6].markdown(f"<span class='data-row'>{bruto_str}</span>", unsafe_allow_html=True)
-                data_cols[7].markdown(f"<span class='data-row'>{neto_str}</span>", unsafe_allow_html=True)
-                data_cols[8].markdown(f"<span class='data-row'>{ajustes_str}</span>", unsafe_allow_html=True)
-                
-                # Pequeña separación visual
-                st.markdown("---")
-            
         # =================================================================
 
     else:
