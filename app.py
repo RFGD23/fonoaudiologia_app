@@ -353,12 +353,11 @@ def _cleanup_edit_state():
         f'btn_update_price_form_{edited_id}', 
         f'btn_update_tributo_form_{edited_id}', 
         f'btn_update_tarjeta_form_{edited_id}', 
-        # NOTA: La clave f'edit_desc_adicional_manual_{edited_id}' NO EXISTE y la eliminamos del cleanup
     ]
     
     # También añadimos la clave fallida al cleanup por si se creó accidentalmente
-    keys_to_delete.append(f'edit_desc_adicional_manual_{edited_id}') 
-    
+    # keys_to_delete.append(f'edit_desc_adicional_manual_{edited_id}') # Ya no es necesario
+
     for key in keys_to_delete:
         if key in st.session_state: del st.session_state[key] 
         
@@ -379,7 +378,8 @@ def save_edit_state_to_df():
     
     # LECTURA SEGURA DE TIPOS NUMÉRICOS
     valor_bruto_final = int(st.session_state.get(f'edit_valor_bruto_{record_id}', 0))
-    desc_adicional_final = int(st.session_state.get(f'edit_desc_adic_{record_id}', 0)) # Usando la clave correcta 'edit_desc_adic'
+    # *** CLAVE CORREGIDA USANDO .get() PARA ROBUSTEZ ***
+    desc_adicional_final = int(st.session_state.get(f'edit_desc_adic_{record_id}', 0)) 
     
     # Obtener los descuentos actualizados (o los originales si no se recalcularon)
     desc_fijo_final = int(st.session_state.get('original_desc_fijo_lugar', 0))
@@ -447,7 +447,7 @@ def update_edit_desc_tarjeta(edited_id):
     metodo_pago_actual = st.session_state.get(f'edit_metodo_{edited_id}', '').upper()
     valor_bruto_actual = int(st.session_state.get(f'edit_valor_bruto_{edited_id}', 0))
     
-    # 💥 CORRECCIÓN CRÍTICA: Usamos 'edit_desc_adic' que es la clave correcta en tu código.
+    # 💥 CORRECCIÓN CRÍTICA: Se corrige la clave para acceder al Desc. Adicional Manual
     desc_adicional_manual_actual = int(st.session_state.get(f'edit_desc_adic_{edited_id}', 0))
 
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual, 0.00)
@@ -962,6 +962,7 @@ with tab_registro:
                                     key=f'edit_valor_bruto_{edited_id}', 
                                     on_change=force_recalculate)
                     
+                    # CLAVE DE INPUT CORREGIDA PARA CONCORDAR CON LA LECTURA
                     st.number_input("✂️ **Desc. Adicional Manual**", 
                                     step=1000, 
                                     key=f'edit_desc_adic_{edited_id}', 
@@ -985,6 +986,7 @@ with tab_registro:
                     # Valores actuales para display
                     current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', record_dict['Desc. Fijo Lugar'])
                     current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', record_dict['Desc. Tarjeta'])
+                    # LECTURA DE LA CLAVE CORREGIDA
                     current_desc_adic = st.session_state.get(f'edit_desc_adic_{edited_id}', 0)
                     
                     current_total = (
