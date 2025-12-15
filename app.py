@@ -279,6 +279,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
         valor_bruto 
         - desc_fijo_lugar 
         - desc_tarjeta 
+        - desc_adicional_manual
     )
     
     return {
@@ -390,6 +391,7 @@ def save_edit_state_to_df():
         valor_bruto_final
         - desc_fijo_final
         - desc_tarjeta_final
+        - desc_adicional_manual
     )
     
     data_to_update = {
