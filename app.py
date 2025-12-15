@@ -420,7 +420,8 @@ def update_edit_tributo():
              try: 
                  regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
                  if regla_especial_monto is not None:
-                     desc_fijo_calc = regla_especial_mount
+                     # FIX: Usar la variable correcta
+                     desc_fijo_calc = regla_especial_monto 
              except Exception:
                  pass
              
@@ -1071,14 +1072,18 @@ with tab_dashboard:
                     st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
 
 
-                # --- Botones de Control Final ---
+                # --- Botones de Control Final (Línea ~1080) ---
                 st.markdown("---")
                 col_final1, col_final2, col_final3 = st.columns([0.6, 0.2, 0.2])
                 
                 # Botón de Guardado general
                 with col_final1:
-                    # Este botón guarda todos los inputs (incluidos los de Recalcular)
-                    if st.form_submit_button("💾 Aplicar Cambios y Cerrar Edición", type="primary"):
+                    # ESTA ES LA CORRECCIÓN CLAVE 1: Añadir la KEY explícita al botón de guardado principal
+                    if st.form_submit_button(
+                        "💾 Aplicar Cambios y Cerrar Edición", 
+                        type="primary",
+                        key='btn_save_edit_form' # <--- KEY AGREGADA
+                    ):
                         new_total = save_edit_state_to_df()
                         st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
                         _cleanup_edit_state()
@@ -1088,14 +1093,14 @@ with tab_dashboard:
                 with col_final2:
                     st.form_submit_button("❌ Cerrar Edición", key='btn_close_edit_form', on_click=_cleanup_edit_state)
                     
-                # Botón de Eliminar CORREGIDO
+                # Botón de Eliminar (Línea 1093)
                 with col_final3:
                     st.form_submit_button(
                         "🗑️ Eliminar", 
-                        key='btn_delete_form', # <--- CORRECCIÓN CLAVE: Clave única
+                        key='btn_delete_form', # <--- KEY AGREGADA PREVIAMENTE
                         type="danger", 
                         help="Elimina permanentemente este registro.", 
-                        on_click=delete_record_callback, # <--- CORRECCIÓN CLAVE: Usamos on_click
+                        on_click=delete_record_callback, 
                         args=(edited_id,)
                     )
         
