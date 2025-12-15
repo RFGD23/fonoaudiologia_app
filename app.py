@@ -132,9 +132,9 @@ def get_db_connection():
 
 @st.cache_data(show_spinner=False)
 def load_data_from_db():
-    """Carga los datos desde SQLite a un DataFrame."""
+    """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID DESC**."""
     conn = get_db_connection()
-    # Cambiamos el orden a DESC para que los últimos registros aparezcan primero
+    # ORDENADO POR ID DESC para mostrar lo más nuevo primero.
     df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id DESC", conn) 
     conn.close()
     
@@ -290,7 +290,7 @@ def update_price_from_item_or_lugar():
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
     
 def force_recalculate():
-    """Función de callback simple para forzar actualización del estado (ej: para el Total Líquido)."""
+    """Función de callback simple para forzar actualización del estado (ej: para el Total Líquido) en el formulario de REGISTRO."""
     pass
 
 def update_edit_price():
@@ -369,7 +369,7 @@ def save_edit_state_to_df():
     return 0 
 
 def update_edit_bruto_price():
-    """Callback: Actualiza el Valor Bruto al precio base sugerido."""
+    """Callback: Actualiza el Valor Bruto al precio base sugerido (y guarda)."""
     lugar_edit = st.session_state.edit_lugar.upper()
     item_edit = st.session_state.edit_item
     
@@ -387,7 +387,7 @@ def update_edit_bruto_price():
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def update_edit_desc_tarjeta():
-    """Callback: Recalcula y actualiza el Desc. Tarjeta."""
+    """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
     comision_pct_actual = COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)
     valor_bruto_actual = st.session_state.edit_valor_bruto
     nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
@@ -402,7 +402,7 @@ def update_edit_desc_tarjeta():
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def update_edit_tributo():
-    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha."""
+    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y guarda)."""
     current_lugar_upper = st.session_state.edit_lugar.upper()
     desc_fijo_calc = DESCUENTOS_LUGAR.get(current_lugar_upper, 0) # Base
     
@@ -888,7 +888,7 @@ with tab_dashboard:
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
         st.subheader("🗺️ Detalles de las Aventuras Registradas")
-        st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición.")
+        st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición. La tabla está ordenada por **ID Descendente**.")
         
         
         # 1. Definir columnas y anchos para la tabla simulada
@@ -905,6 +905,7 @@ with tab_dashboard:
 
 
         # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
+        # EL DATAFRAME df YA ESTÁ ORDENADO POR ID DESCENDENTE GRACIAS A load_data_from_db
         for index, row in df.iterrows():
             
             # Formatear datos
@@ -948,7 +949,6 @@ with tab_dashboard:
             # justo antes de que Streamlit dibuje los widgets
             
             # Asignar valores de la fila a las claves de sesión (solo si el valor es diferente o la clave no existe)
-            # Esto es para evitar que los callbacks que fuerzan el rerun sobrescriban los inputs
             current_paciente = st.session_state.get('edit_paciente', None)
             if current_paciente is None or current_paciente != edit_row['Paciente']:
                  st.session_state.edit_paciente = edit_row['Paciente']
@@ -980,33 +980,33 @@ with tab_dashboard:
                 with col_e1:
                     st.subheader("Datos Clave")
                     
-                    # FECHA (st.date_input)
-                    st.date_input("🗓️ Fecha de Atención", st.session_state.edit_fecha, key="edit_fecha", on_change=update_edit_tributo)
+                    # FECHA (st.date_input) - Se elimina on_change
+                    st.date_input("🗓️ Fecha de Atención", st.session_state.edit_fecha, key="edit_fecha")
                     
-                    # LUGAR (st.selectbox)
+                    # LUGAR (st.selectbox) - Se elimina on_change
                     try:
                         lugar_idx = LUGARES.index(st.session_state.edit_lugar)
                     except ValueError:
                         lugar_idx = 0
-                    st.selectbox("📍 Lugar", options=LUGARES, key="edit_lugar", index=lugar_idx, on_change=update_edit_price)
+                    st.selectbox("📍 Lugar", options=LUGARES, key="edit_lugar", index=lugar_idx)
 
-                    # ÍTEM (st.selectbox)
+                    # ÍTEM (st.selectbox) - Se elimina on_change
                     items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar, {}).keys())
                     try:
                          item_idx = items_edit_list.index(st.session_state.edit_item) if st.session_state.edit_item in items_edit_list else 0
                     except (ValueError, KeyError):
                         item_idx = 0
-                    st.selectbox("📋 Ítem", options=items_edit_list, key="edit_item", index=item_idx, on_change=update_edit_price)
+                    st.selectbox("📋 Ítem", options=items_edit_list, key="edit_item", index=item_idx)
                     
                     # PACIENTE (st.text_input)
                     st.text_input("👤 Paciente", key="edit_paciente")
                     
-                    # MÉTODO DE PAGO (st.selectbox)
+                    # MÉTODO DE PAGO (st.selectbox) - Se elimina on_change
                     try:
                         metodo_idx = METODOS_PAGO.index(st.session_state.edit_metodo)
                     except ValueError:
                         metodo_idx = 0
-                    st.selectbox("💳 Método Pago", options=METODOS_PAGO, key="edit_metodo", index=metodo_idx, on_change=update_edit_desc_tarjeta)
+                    st.selectbox("💳 Método Pago", options=METODOS_PAGO, key="edit_metodo", index=metodo_idx)
 
                 
                 # =============================================================
@@ -1041,8 +1041,10 @@ with tab_dashboard:
                     # Botones de Recálculo de Tributo y Tarjeta
                     col_btn1, col_btn2 = st.columns(2)
                     with col_btn1:
+                        # Este botón recalcula y guarda Desc. Fijo Lugar, usando Fecha y Lugar actuales
                         st.form_submit_button("🔄 Recalcular Tributo/Regla", key='btn_update_tributo_form', on_click=update_edit_tributo, use_container_width=True)
                     with col_btn2:
+                         # Este botón recalcula y guarda Desc. Tarjeta, usando Método Pago y Valor Bruto actuales
                         st.form_submit_button("🔄 Recalcular Tarjeta", key='btn_update_tarjeta_form', on_click=update_edit_desc_tarjeta, use_container_width=True)
 
 
@@ -1081,6 +1083,7 @@ with tab_dashboard:
                 
                 # Botón de Guardado general
                 with col_final1:
+                    # Este botón guarda todos los inputs (incluidos los de Recalcular)
                     if st.form_submit_button("💾 Aplicar Cambios y Cerrar Edición", type="primary"):
                         new_total = save_edit_state_to_df()
                         st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
