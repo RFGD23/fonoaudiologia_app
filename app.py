@@ -254,12 +254,16 @@ def submit_and_reset():
     
     paciente_nombre_guardar = st.session_state.form_paciente 
     
+    # NOTA: Ahora usamos los valores del session_state para el cálculo, ya que los widgets reactivos
+    #       (Lugar, Item, Valor Bruto, Desc Adicional) están fuera del form y ya actualizaron el state.
+    #       Los widgets de formulario (Fecha, Pago) también actualizaron su respectivo state
+    
     resultados_finales = calcular_ingreso(
         st.session_state.form_lugar, 
         st.session_state.form_item, 
-        st.session_state.form_metodo_pago, 
+        st.session_state.form_metodo_pago, # Usa el valor del estado actualizado
         st.session_state.form_desc_adic_input, 
-        fecha_atencion=st.session_state.form_fecha, 
+        fecha_atencion=st.session_state.form_fecha, # Usa el valor del estado actualizado
         valor_bruto_override=st.session_state.form_valor_bruto
     )
     
@@ -296,13 +300,18 @@ def submit_and_reset():
     default_item = items_default[0] if items_default else ''
     default_valor_bruto = int(PRECIOS_BASE_CONFIG.get(default_lugar, {}).get(default_item, 0))
 
+    # Limpiar/resetear las claves de SESSION_STATE (esto resetea los widgets que usan estas claves)
     if LUGARES: st.session_state.form_lugar = default_lugar
     st.session_state.form_item = default_item
     st.session_state.form_valor_bruto = default_valor_bruto
     st.session_state.form_desc_adic_input = 0
-    st.session_state.form_fecha = date.today()
+    st.session_state.form_fecha = date.today() # Resetea el date_input
     if METODOS_PAGO: st.session_state.form_metodo_pago = METODOS_PAGO[0]
     st.session_state.form_paciente = "" # Limpiar el campo paciente
+    
+    # Limpiar las claves temporales del formulario (que no tienen on_change)
+    if 'form_fecha_no_reactive' in st.session_state: del st.session_state.form_fecha_no_reactive
+    if 'form_metodo_pago_no_reactive' in st.session_state: del st.session_state.form_metodo_pago_no_reactive
     
     # Limpiar el mensaje de error si existía
     if 'save_error' in st.session_state:
@@ -419,89 +428,90 @@ with tab_registro:
 
 
     # ----------------------------------------------------------------------
-    # FORMULARIO UNIFICADO (Todos los widgets dentro del form)
+    # WIDGETS REACTIVOS (FUERA DEL FORMULARIO) - Diseño de Cabecera
+    # ----------------------------------------------------------------------
+    st.markdown("### 📝 Datos de la Aventura")
+    col_cabecera_1, col_cabecera_2, col_cabecera_3, col_cabecera_4 = st.columns(4)
+
+    # 1. SELECTBOX LUGAR (REACTIVO)
+    with col_cabecera_1:
+        try:
+            lugar_index = LUGARES.index(st.session_state.form_lugar) if st.session_state.form_lugar in LUGARES else 0
+        except ValueError:
+            lugar_index = 0
+
+        st.selectbox("📍 Castillo/Lugar de Atención", 
+                    options=LUGARES, 
+                    key="form_lugar",
+                    index=lugar_index,
+                    on_change=update_price_from_item_or_lugar) 
+    
+    # 2. SELECTBOX ÍTEM (REACTIVO)
+    with col_cabecera_2:
+        lugar_key_current = st.session_state.form_lugar 
+        items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
+        
+        item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
+        
+        try:
+            item_index = items_filtrados_current.index(item_para_seleccionar) if item_para_seleccionar in items_filtrados_current else 0
+        except (ValueError, KeyError):
+            item_index = 0 
+            
+        st.selectbox("📋 Poción/Procedimiento", 
+                    options=items_filtrados_current, 
+                    key="form_item",
+                    index=item_index, 
+                    on_change=update_price_from_item_or_lugar) 
+    
+    # 3. VALOR BRUTO (REACTIVO)
+    with col_cabecera_3:
+        st.number_input(
+            "💰 **Valor Bruto (Recompensa)**", 
+            min_value=0, 
+            step=1000,
+            key="form_valor_bruto", 
+            on_change=force_recalculate 
+        )
+
+    # 4. DESCUENTO ADICIONAL (REACTIVO)
+    with col_cabecera_4:
+        st.number_input(
+            "✂️ **Polvo Mágico Extra (Ajuste)**", 
+            min_value=-500000, 
+            value=st.session_state.get('form_desc_adic_input', 0), 
+            step=1000, 
+            key="form_desc_adic_input",
+            on_change=force_recalculate, 
+            help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
+        )
+    
+    st.markdown("---") 
+
+    # ----------------------------------------------------------------------
+    # WIDGETS DE FORMULARIO (DENTRO DEL st.form)
     # ----------------------------------------------------------------------
     
     with st.form("registro_atencion_form"): 
         
-        # --- Cabecera de la Aventura (Lugar, Ítem, Valor, Descuento Adicional) ---
-        col_cabecera_1, col_cabecera_2, col_cabecera_3, col_cabecera_4 = st.columns(4)
-
-        # 1. SELECTBOX LUGAR
-        with col_cabecera_1:
-            try:
-                lugar_index = LUGARES.index(st.session_state.form_lugar) if st.session_state.form_lugar in LUGARES else 0
-            except ValueError:
-                lugar_index = 0
-
-            st.selectbox("📍 Castillo/Lugar de Atención", 
-                        options=LUGARES, 
-                        key="form_lugar",
-                        index=lugar_index,
-                        on_change=update_price_from_item_or_lugar) 
-        
-        # 2. SELECTBOX ÍTEM
-        with col_cabecera_2:
-            lugar_key_current = st.session_state.form_lugar 
-            items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
-            
-            item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
-            
-            try:
-                item_index = items_filtrados_current.index(item_para_seleccionar) if item_para_seleccionar in items_filtrados_current else 0
-            except (ValueError, KeyError):
-                item_index = 0 
-                
-            st.selectbox("📋 Poción/Procedimiento", 
-                        options=items_filtrados_current, 
-                        key="form_item",
-                        index=item_index, 
-                        on_change=update_price_from_item_or_lugar) 
-        
-        # 3. VALOR BRUTO 
-        with col_cabecera_3:
-            st.number_input(
-                "💰 **Valor Bruto (Recompensa)**", 
-                min_value=0, 
-                step=1000,
-                key="form_valor_bruto", 
-                on_change=force_recalculate 
-            )
-
-        # 4. DESCUENTO ADICIONAL
-        with col_cabecera_4:
-            st.number_input(
-                "✂️ **Polvo Mágico Extra (Ajuste)**", 
-                min_value=-500000, 
-                value=st.session_state.get('form_desc_adic_input', 0), 
-                step=1000, 
-                key="form_desc_adic_input",
-                on_change=force_recalculate, 
-                help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
-            )
-        
-        st.markdown("---") # Separador visual
-        
-        # --- Contenido Principal (Diseño de 2 columnas para Inputs/Outputs) ---
-        
         col_c1, col_c2 = st.columns(2)
 
-        # --- COLUMNA IZQUIERDA (Datos personales y de pago) ---
+        # --- COLUMNA IZQUIERDA (Datos personales y de pago NO REACTIVOS) ---
         with col_c1:
             
-            # FECHA DE ATENCIÓN
+            # FECHA DE ATENCIÓN (DENTRO DEL FORM - NO REACTIVO)
             fecha = st.date_input(
                 "🗓️ Fecha de Atención", 
                 st.session_state.form_fecha, 
-                key="form_fecha", 
-                on_change=force_recalculate 
+                key="form_fecha_no_reactive" # CLAVE TEMPORAL
             ) 
-            st.session_state.form_fecha = fecha # Actualiza el estado
+            # Sobreescribimos el estado original para el cálculo y guardado
+            st.session_state.form_fecha = fecha 
             
-            # PACIENTE
+            # PACIENTE (DENTRO DEL FORM - PARA LIMPIEZA)
             paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", st.session_state.form_paciente, key="form_paciente")
             
-            # MÉTODO DE PAGO
+            # MÉTODO DE PAGO (DENTRO DEL FORM - NO REACTIVO)
             try:
                 pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
             except ValueError:
@@ -510,11 +520,11 @@ with tab_registro:
             metodo_pago = st.radio(
                 "💳 Método de Pago Mágico", 
                 options=METODOS_PAGO, 
-                key="form_metodo_pago", 
-                index=pago_idx,
-                on_change=force_recalculate 
+                key="form_metodo_pago_no_reactive", # CLAVE TEMPORAL
+                index=pago_idx
             )
-            st.session_state.form_metodo_pago = metodo_pago # Actualiza el estado
+            # Sobreescribimos el estado original para el cálculo y guardado
+            st.session_state.form_metodo_pago = metodo_pago 
 
         # --- COLUMNA DERECHA (Cálculos de Salida) ---
         with col_c2:
@@ -524,10 +534,11 @@ with tab_registro:
             if not LUGARES or not items_filtrados_initial:
                 st.info("Configuración de Lugar/Ítem incompleta. Revisa la pestaña de Configuración.")
             else:
-                # Recalcular usando los valores del state
+                
                 desc_adicional_calc = st.session_state.form_desc_adic_input 
                 valor_bruto_calc = st.session_state.form_valor_bruto
                 
+                # Cálculo usando los valores del session_state (actualizados por los widgets de arriba)
                 resultados = calcular_ingreso(
                     st.session_state.form_lugar, 
                     st.session_state.form_item,              
@@ -541,7 +552,6 @@ with tab_registro:
                 
                 # LÓGICA DE ETIQUETADO DEL TRIBUTO
                 current_lugar_upper = st.session_state.form_lugar 
-                
                 try:
                     current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()] 
                 except Exception:
@@ -567,7 +577,7 @@ with tab_registro:
                 st.success(
                     f"## 💎 Tesoro Total (Líquido): {format_currency(resultados['total_recibido'])}"
                 )
-        
+    
         st.markdown("---") 
 
         # --- BOTÓN DE ENVÍO DEL FORMULARIO ---
@@ -1257,3 +1267,4 @@ with tab_config:
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar comisiones: {e}")
+            
