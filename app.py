@@ -417,11 +417,11 @@ def save_edit_state_to_df():
     return 0 
 
 # =========================================================================
-# FUNCIONES DE CALLBACKS DE EDICIÓN
+# FUNCIONES DE CALLBACKS DE EDICIÓN (MODIFICADAS)
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
-    """Callback: Actualiza el Valor Bruto al precio base sugerido (y guarda)."""
+    """Callback: Actualiza el Valor Bruto al precio base sugerido (y NO guarda en DB)."""
     lugar_edit = st.session_state[f'edit_lugar_{edited_id}'].upper()
     item_edit = st.session_state[f'edit_item_{edited_id}']
     
@@ -431,41 +431,35 @@ def update_edit_bruto_price(edited_id):
     # 1. Actualizar el widget de la sesión
     st.session_state[f'edit_valor_bruto_{edited_id}'] = int(nuevo_precio_base)
     
-    # 2. Guardar en la DB con el nuevo valor
-    new_total = save_edit_state_to_df() 
-    
-    if new_total > 0:
-        st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
+    # 2. NO GUARDAR EN DB. Solo se actualiza la vista previa.
+    st.toast(f"Valor Bruto actualizado a {format_currency(int(nuevo_precio_base))}$. Presiona 'Aplicar Cambios' para guardar en el Tesoro.", icon="🔄")
         
-    # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
+    # 🚨 MANTENER ESTADO: Asegurar el ID antes de la recarga
     st.session_state.edited_record_id = edited_id 
     
     st.rerun() 
 
 def update_edit_desc_tarjeta(edited_id):
-    """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
+    """Callback: Recalcula y actualiza el Desc. Tarjeta (y NO guarda en DB)."""
     metodo_pago_actual = st.session_state[f'edit_metodo_{edited_id}']
     valor_bruto_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
     
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
     nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
     
-    # 1. Actualizar el valor en el estado de sesión
+    # 1. Actualizar el valor en el estado de sesión (para la Vista Previa)
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
     
-    # 2. Guardar en la DB con el nuevo valor de descuento de tarjeta
-    new_total = save_edit_state_to_df() 
-    
-    if new_total > 0:
-        st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
+    # 2. NO GUARDAR EN DB. Solo se actualiza la vista previa.
+    st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Presiona 'Aplicar Cambios' para guardar en el Tesoro.", icon="💳")
 
-    # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
+    # 🚨 MANTENER ESTADO: Asegurar el ID antes de la recarga
     st.session_state.edited_record_id = edited_id 
     
     st.rerun() 
 
 def update_edit_tributo(edited_id):
-    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y guarda)."""
+    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y NO guarda en DB)."""
     current_lugar_upper = st.session_state[f'edit_lugar_{edited_id}'].upper()
     current_valor_bruto = st.session_state[f'edit_valor_bruto_{edited_id}']
     desc_fijo_calc = DESCUENTOS_LUGAR.get(current_lugar_upper, 0)
@@ -495,19 +489,16 @@ def update_edit_tributo(edited_id):
              except Exception:
                  pass
              
-    # 1. Actualizar el valor en el estado de sesión
+    # 1. Actualizar el valor en el estado de sesión (para la Vista Previa)
     st.session_state.original_desc_fijo_lugar = desc_fijo_calc
     
-    # 2. Guardar en la DB con el nuevo valor de tributo
-    new_total = save_edit_state_to_df() 
-    
-    if new_total > 0:
-        st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
+    # 2. NO GUARDAR EN DB. Solo se actualiza la vista previa.
+    st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Presiona 'Aplicar Cambios' para guardar en el Tesoro.", icon="🏛️")
         
-    # 🚨 CORRECCIÓN DE ROBUSTEZ: ESTE ES EL PASO CLAVE QUE ASEGURA EL ESTADO
+    # 🚨 MANTENER ESTADO: ESTE ES EL PASO CLAVE QUE ASEGURA EL ESTADO
     st.session_state.edited_record_id = edited_id 
 
-    st.rerun()
+    st.rerun() 
 
 
 def submit_and_reset():
