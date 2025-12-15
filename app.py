@@ -62,14 +62,13 @@ def load_config(filename):
 
 def sanitize_number_input(value):
     """
-    [FUNCIÓN REUBICADA] Convierte un valor de input de tabla (que puede ser NaN, string o float) a int. 
-    Esto soluciona el problema de la persistencia de los campos numéricos en la configuración.
+    Convierte un valor de input de tabla (que puede ser NaN, string o float) a int. 
     """
     # 1. Tratar valores nulos o vacíos
     if pd.isna(value) or value is None or value == "":
         return 0
     
-    # 2. Convertir a float primero y luego a int (para manejar correctamente la notación científica o strings de números)
+    # 2. Convertir a float primero y luego a int 
     try:
         return int(float(value))
     except (ValueError, TypeError):
@@ -194,10 +193,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 # --- Funciones de Reactividad y Reinicio ---
 
 def update_price_from_item_or_lugar():
-    """
-    Callback llamado cuando 'form_lugar' o 'form_item' cambia.
-    Actualiza st.session_state (y fuerza un rerun porque actualiza el estado).
-    """
+    """Callback para actualizar precio y estado al cambiar Lugar o Ítem."""
     lugar_key_current = st.session_state.get('form_lugar', '').upper()
     
     items_disponibles = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
@@ -225,21 +221,14 @@ def update_price_from_item_or_lugar():
         
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).get(item_calc_for_price, 0)
     
-    # Al modificar estos valores, Streamlit forzará un rerun automáticamente
     st.session_state.form_valor_bruto = int(precio_base_sugerido)
     
 def force_recalculate():
-    """
-    Función de callback simple para asegurar que el estado de la sesión
-    se ha actualizado. Usado en widgets reactivos.
-    """
+    """Función de callback simple para forzar actualización del estado."""
     pass
 
 def update_edit_price():
-    """
-    Callback llamado cuando 'edit_lugar' o 'edit_item' cambia en el modal de edición.
-    Actualiza st.session_state sin necesidad de st.rerun().
-    """
+    """Callback para actualizar precio sugerido en el modal de edición."""
     lugar_key_edit = st.session_state.get('edit_lugar', '').upper()
     item_key_edit = st.session_state.get('edit_item', '')
     
@@ -252,10 +241,7 @@ def update_edit_price():
     st.session_state.edit_valor_bruto = int(precio_base_sugerido_edit)
 
 def submit_and_reset():
-    """
-    Callback que ejecuta la lógica de guardado y luego resetea todos los widgets 
-    manualmente.
-    """
+    """Ejecuta la lógica de guardado y luego resetea el formulario."""
     
     # 0. Verificación simple del campo obligatorio
     if st.session_state.get('form_paciente', "") == "":
@@ -270,8 +256,6 @@ def submit_and_reset():
     # --- LÓGICA DE GUARDADO Y CÁLCULO ---
     
     paciente_nombre_guardar = st.session_state.form_paciente 
-    
-    # Ahora usamos los valores del session_state para el cálculo (todos están actualizados)
     
     resultados_finales = calcular_ingreso(
         st.session_state.form_lugar, 
@@ -322,9 +306,8 @@ def submit_and_reset():
     st.session_state.form_desc_adic_input = 0
     st.session_state.form_fecha = date.today() 
     if METODOS_PAGO: st.session_state.form_metodo_pago = METODOS_PAGO[0]
-    st.session_state.form_paciente = "" # Limpiar el campo paciente
+    st.session_state.form_paciente = "" 
     
-    # Limpiar el mensaje de error si existía
     if 'save_error' in st.session_state:
         del st.session_state['save_error']
 
@@ -335,7 +318,7 @@ def format_currency(value):
     return f"${int(value):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def set_dark_mode_theme():
-    """Establece transparencia y ajusta la apariencia de los contenedores para el tema oscuro."""
+    """Establece transparencia y ajusta la apariencia para el tema oscuro."""
     dark_mode_css = '''
     <style>
     .stApp, [data-testid="stAppViewBlock"], .main { background-color: transparent !important; background-image: none !important; }
@@ -501,7 +484,7 @@ with tab_registro:
             "🗓️ Fecha de Atención", 
             st.session_state.form_fecha, 
             key="form_fecha", 
-            on_change=force_recalculate # ¡REACTIVO!
+            on_change=force_recalculate 
         ) 
         
         # MÉTODO DE PAGO (REACTIVO)
@@ -515,16 +498,15 @@ with tab_registro:
             options=METODOS_PAGO, 
             key="form_metodo_pago", 
             index=pago_idx,
-            on_change=force_recalculate # ¡REACTIVO!
+            on_change=force_recalculate 
         )
         
-        st.markdown("---") # Separador visual
+        st.markdown("---") 
 
     # ----------------------------------------------------------------------
     # WIDGETS DE FORMULARIO (DENTRO DEL st.form)
     # ----------------------------------------------------------------------
     
-    # El formulario ahora solo contiene el campo Paciente (para limpieza automática)
     with st.form("registro_atencion_form"): 
         
         # --- COLUMNA IZQUIERDA (SOLO PACIENTE) ---
@@ -907,7 +889,6 @@ with tab_dashboard:
                 except ValueError:
                     lugar_idx = 0
                 
-                # NOTA: El SelectBox usa LUGARES (en MAYÚSCULAS)
                 edited_lugar_display = st.selectbox(
                     "📍 Castillo/Lugar de Atención", 
                     options=LUGARES, 
@@ -916,7 +897,7 @@ with tab_dashboard:
                     on_change=update_edit_price 
                 )
                 
-                lugar_key_edit = st.session_state.edit_lugar # Ya está en MAYÚSCULAS
+                lugar_key_edit = st.session_state.edit_lugar 
                 items_edit = list(PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).keys())
                 
                 # Ajustar el índice para el ítem de edición
@@ -939,7 +920,7 @@ with tab_dashboard:
                 edited_paciente = st.text_input("👤 Héroe/Heroína (Paciente)", value=data_to_edit['Paciente'], key="edit_paciente")
                 
                 try:
-                    pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'].upper()) # Aseguramos mayúsculas
+                    pago_idx = METODOS_PAGO.index(data_to_edit['Método Pago'].upper())
                 except ValueError:
                     pago_idx = 0
                 edited_metodo_pago = st.radio("💳 Método de Pago Mágico", 
@@ -1050,7 +1031,7 @@ with tab_config:
     # 6. CONFIGURACIÓN MAESTRA
     # ===============================================
     st.header("⚙️ Configuración Maestra del Tesoro")
-    st.warning("🚨 ¡Precaución! Los cambios aquí afectan a los cálculos de registro de aventuras futuros. Los registros antiguos no se modifican.")
+    st.warning("🚨 ¡Precaución! Los cambios aquí afectan a los cálculos de registro de aventuras futuros.")
     
     # ----------------------------------------------------
     # 1. PRECIOS BASE (PRECIOS_BASE_CONFIG)
@@ -1062,7 +1043,6 @@ with tab_config:
         data_for_df = []
         for lugar, items in PRECIOS_BASE_CONFIG.items():
             for item, precio in items.items():
-                # Asegurar que el precio es int antes de mostrarlo
                 data_for_df.append({"Lugar": lugar, "Ítem": item, "Valor Bruto": sanitize_number_input(precio)})
         
         if data_for_df:
@@ -1074,14 +1054,13 @@ with tab_config:
         
         edited_df_precios = st.data_editor(
             df_precios,
-            num_rows="dynamic", # Permite añadir y borrar filas
+            num_rows="dynamic",
             column_config={
                 "Valor Bruto": st.column_config.NumberColumn(
                     "Valor Bruto",
                     help="Precio sugerido para este Ítem en este Lugar.",
                     min_value=0,
                     step=1000,
-                    # FORMATO ELIMINADO: AHORA DEBERÍA PERMITIR LA EDICIÓN
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True),
                 "Ítem": st.column_config.TextColumn("Ítem", required=True)
@@ -1097,7 +1076,6 @@ with tab_config:
                 for _, row in edited_df_precios.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     item = str(row['Ítem'])
-                    # Usar la función robusta de sanitización
                     valor = sanitize_number_input(row['Valor Bruto']) 
                     
                     if lugar and item and item != 'None':
@@ -1109,8 +1087,8 @@ with tab_config:
                 
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
-                st.success("✅ Precios base actualizados correctamente.")
-                time.sleep(1)
+                st.success("✅ Precios base actualizados correctamente. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
+                time.sleep(4)
                 st.rerun()
                 
             except Exception as e:
@@ -1139,7 +1117,6 @@ with tab_config:
                     help="Monto fijo que se descuenta por defecto en este Lugar.",
                     min_value=0,
                     step=500,
-                    # FORMATO ELIMINADO: AHORA DEBERÍA PERMITIR LA EDICIÓN
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True)
             },
@@ -1152,7 +1129,6 @@ with tab_config:
                 new_descuentos_config = {}
                 for _, row in edited_df_descuentos.iterrows():
                     lugar = str(row['Lugar']).upper() 
-                    # Usar la función robusta de sanitización
                     valor = sanitize_number_input(row['Desc. Fijo Base']) 
                     if lugar:
                         new_descuentos_config[lugar] = valor
@@ -1161,8 +1137,8 @@ with tab_config:
                 
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
-                st.success("✅ Descuentos fijos actualizados correctamente.")
-                time.sleep(1)
+                st.success("✅ Descuentos fijos actualizados correctamente. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
+                time.sleep(4)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar descuentos fijos: {e}")
@@ -1188,7 +1164,6 @@ with tab_config:
                     help="Monto que reemplaza al 'Desc. Fijo Base' si coincide el día y lugar.",
                     min_value=0,
                     step=500,
-                    # FORMATO ELIMINADO: AHORA DEBERÍA PERMITIR LA EDICIÓN
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True),
                 "Día": st.column_config.SelectboxColumn(
@@ -1207,7 +1182,6 @@ with tab_config:
                 for _, row in edited_df_reglas.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     dia = str(row['Día']).upper() 
-                    # Usar la función robusta de sanitización
                     monto = sanitize_number_input(row['Descuento Regla']) 
                     
                     if lugar and dia and dia in DIAS_SEMANA:
@@ -1219,8 +1193,8 @@ with tab_config:
                 
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
-                st.success("✅ Reglas de descuento por día actualizadas.")
-                time.sleep(1)
+                st.success("✅ Reglas de descuento por día actualizadas. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
+                time.sleep(4)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar reglas: {e}")
@@ -1274,8 +1248,8 @@ with tab_config:
                 
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
-                st.success("✅ Comisiones de pago actualizadas correctamente.")
-                time.sleep(1)
+                st.success("✅ Comisiones de pago actualizadas correctamente. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
+                time.sleep(4)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar comisiones: {e}")
