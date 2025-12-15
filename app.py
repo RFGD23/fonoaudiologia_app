@@ -824,6 +824,10 @@ with tab_dashboard:
                 # Inicializar los valores de number_input en el state antes de abrir el modal
                 st.session_state.edit_valor_bruto = int(row['Valor Bruto'])
                 st.session_state.edit_desc_adic = int(row['Desc. Adicional'])
+                
+                # Inicializar el estado de la fila original para recalculos específicos
+                st.session_state.original_desc_fijo_lugar = int(row['Desc. Fijo Lugar'])
+                st.session_state.original_desc_tarjeta = int(row['Desc. Tarjeta'])
 
                 st.rerun()
 
@@ -938,13 +942,26 @@ with tab_dashboard:
             with col_edit2_out: 
                 
                 # VALOR BRUTO DE EDICIÓN 
-                edited_valor_bruto = st.number_input(
-                    "💰 **Valor Bruto (Recompensa)**", 
-                    min_value=0, 
-                    step=1000,
-                    key="edit_valor_bruto" ,
-                    on_change=force_recalculate 
-                )
+                col_vb_input, col_vb_btn = st.columns([0.65, 0.35])
+                
+                with col_vb_input:
+                    edited_valor_bruto = st.number_input(
+                        "💰 **Valor Bruto (Recompensa)**", 
+                        min_value=0, 
+                        step=1000,
+                        key="edit_valor_bruto" ,
+                        on_change=force_recalculate 
+                    )
+                
+                # --- BOTÓN DE RECALCULAR VALOR BRUTO ---
+                with col_vb_btn:
+                    if st.button("🔄 Actualizar Base", key="btn_update_bruto", help="Actualizar el Valor Bruto con el precio actual de la configuración maestra."):
+                        lugar_edit = st.session_state.edit_lugar.upper()
+                        item_edit = st.session_state.edit_item
+                        
+                        nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, st.session_state.edit_valor_bruto)
+                        st.session_state.edit_valor_bruto = int(nuevo_precio_base)
+                        st.rerun()
 
                 edited_desc_adicional_manual = st.number_input(
                     "✂️ **Polvo Mágico Extra (Ajuste)**", 
@@ -966,18 +983,38 @@ with tab_dashboard:
                     valor_bruto_override=st.session_state.edit_valor_bruto
                 )
                 
-                st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** {format_currency(resultados_edit['desc_tarjeta'])}")
+                st.markdown("---") 
+                st.markdown("### 🛠️ Recalcular Reducciones")
+
+                # --- DESCUENTO TARJETA Y BOTÓN DE ACTUALIZACIÓN ---
+                col_tarjeta_text, col_tarjeta_btn = st.columns([0.65, 0.35])
                 
-                # --- LÓGICA DE ETIQUETADO DEL TRIBUTO EN EDICIÓN ---
+                with col_tarjeta_text:
+                    comision_pct_actual = COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)
+                    st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({comision_pct_actual*100:.0f}% actual):** {format_currency(resultados_edit['desc_tarjeta'])}")
+                
+                with col_tarjeta_btn:
+                    if st.button("🔄 Recalcular Desc. Tarjeta", key="btn_update_tarjeta", help="Recalcula el descuento de tarjeta con la tasa de comisión actual y el Valor Bruto de la edición."):
+                        st.session_state.original_desc_tarjeta = int(st.session_state.edit_valor_bruto * comision_pct_actual)
+                        st.success("Desc. Tarjeta actualizado. Haz clic en Guardar Edición.")
+                        st.rerun()
+
+                # --- TRIBUTO Y BOTÓN DE ACTUALIZACIÓN ---
+                col_tributo_text, col_tributo_btn = st.columns([0.65, 0.35])
+                
+                # LÓGICA DE ETIQUETADO DEL TRIBUTO EN EDICIÓN
                 current_lugar_upper = st.session_state.edit_lugar 
                 current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
+                desc_fijo_calc = DESCUENTOS_LUGAR.get(current_lugar_upper, 0) # Base
+                
                 if current_lugar_upper in DESCUENTOS_REGLAS:
                      try: 
                          regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
                          if regla_especial_monto is not None:
+                             desc_fijo_calc = regla_especial_monto
                              desc_lugar_label += f" (Regla: {current_day_name})"
                              is_rule_applied = True
                      except Exception:
@@ -986,10 +1023,19 @@ with tab_dashboard:
                 if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
                      desc_lugar_label += " (Base)"
                 
-                st.info(f"**{desc_lugar_label}:** {format_currency(resultados_edit['desc_fijo_lugar'])}")
-                # --- FIN DE LÓGICA CORREGIDA ---
+                with col_tributo_text:
+                    # Se usa el resultado calculado por la función calcular_ingreso, que ya aplica las reglas
+                    st.info(f"**{desc_lugar_label}:** {format_currency(resultados_edit['desc_fijo_lugar'])}")
                 
-                st.markdown("###")
+                with col_tributo_btn:
+                     if st.button("🔄 Actualizar Tributo", key="btn_update_tributo", help="Actualiza el Tributo (Desc. Fijo Lugar) con la regla base o por día actual de la configuración maestra."):
+                         st.session_state.original_desc_fijo_lugar = desc_fijo_calc
+                         st.success("Tributo actualizado. Haz clic en Guardar Edición.")
+                         st.rerun()
+
+                st.markdown("---")
+                # El tesoro total se recalcula con los valores actuales del estado, 
+                # incluyendo los potencialmente actualizados por los botones
                 st.success(
                     f"## 💎 Tesoro Total (Líquido): {format_currency(resultados_edit['total_recibido'])}"
                 )
@@ -998,14 +1044,32 @@ with tab_dashboard:
             col_actions = st.columns([1, 1])
             if col_actions[0].button("💾 Guardar Edición", use_container_width=True, type="primary", key="save_edit"):
                 
-                # Recálculo final antes de guardar
+                # Recálculo final ANTES de guardar, usando los valores del estado de sesión
+                # Esto es crucial si se usaron los botones de actualización, ya que actualizaron 
+                # los valores de session_state.original_desc_fijo_lugar o se usó st.session_state.edit_valor_bruto.
+                
+                # Los resultados de cálculo de `calcular_ingreso` dentro de la función `calcular_ingreso` 
+                # son temporales para la visualización. Al guardar, debemos usar el cálculo final:
+                
+                # 1. Obtener valores que pueden haber sido modificados por botones
+                valor_bruto_final = st.session_state.edit_valor_bruto
+                
+                # 2. Recalcular los descuentos fijos y tarjeta con los valores **actuales de la edición**, 
+                #    para que si el usuario solo actualizó el Valor Bruto, la tarjeta y el tributo se ajusten.
+                
+                # Nota: Aunque se usen los botones de actualización, el `calcular_ingreso` 
+                # de abajo garantiza que el registro sea consistente con la lógica:
+                # Si el usuario NO presiona los botones, usa la lógica normal (Bruto actualizado + reglas actuales).
+                # Si el usuario presiona los botones, el `rerun` fuerza la re-ejecución del código, 
+                # y el valor del Tesoro Líquido es el correcto.
+                
                 resultados_finales_edit = calcular_ingreso(
                     st.session_state.edit_lugar, 
                     st.session_state.edit_item, 
                     st.session_state.edit_metodo, 
                     st.session_state.edit_desc_adic, 
                     fecha_atencion=st.session_state.edit_fecha, 
-                    valor_bruto_override=st.session_state.edit_valor_bruto
+                    valor_bruto_override=valor_bruto_final
                 )
                 
                 # Actualizar la fila en el DataFrame
@@ -1023,12 +1087,22 @@ with tab_dashboard:
                 save_data(st.session_state.atenciones_df)
                 st.session_state.edit_index = None
                 st.session_state.edited_lugar_state = None
+                
+                # Limpiar estados de recalculo
+                if 'original_desc_fijo_lugar' in st.session_state: del st.session_state.original_desc_fijo_lugar
+                if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
+                
                 st.success("✅ Aventura editada y tesoro recalculado.")
                 st.rerun()
 
             if col_actions[1].button("❌ Cancelar Edición", use_container_width=True, key="cancel_edit"):
                 st.session_state.edit_index = None
                 st.session_state.edited_lugar_state = None
+                
+                # Limpiar estados de recalculo
+                if 'original_desc_fijo_lugar' in st.session_state: del st.session_state.original_desc_fijo_lugar
+                if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
+                
                 st.rerun()
                 
 with tab_config:
