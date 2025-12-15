@@ -320,7 +320,10 @@ def _cleanup_edit_state():
         f'edit_fecha_{edited_id}',
         f'btn_delete_form_{edited_id}',  # Clave del botón de eliminar
         f'btn_close_edit_form_{edited_id}', # Clave del botón de cerrar
-        f'btn_save_edit_form_{edited_id}' # Clave del botón de guardar
+        f'btn_save_edit_form_{edited_id}', # Clave del botón de guardar
+        f'btn_update_price_form_{edited_id}', # Clave del botón de actualizar precio
+        f'btn_update_tributo_form_{edited_id}', # Clave del botón de actualizar tributo
+        f'btn_update_tarjeta_form_{edited_id}' # Clave del botón de actualizar tarjeta
     ]
     
     for key in keys_to_delete:
@@ -459,9 +462,7 @@ def delete_record_callback(record_id):
     else:
         st.error(f"No se pudo eliminar el registro ID {record_id}.")
 
-# *******************************************************************
-# MODIFICACIÓN CRÍTICA IMPLEMENTADA AQUÍ (Línea ~865)
-# *******************************************************************
+
 def edit_record_callback(record_id):
     """Callback para establecer el ID a editar y recargar la página."""
     # LIMPIEZA PREVENTIVA: Si ya hay un formulario de edición abierto, límpialo primero.
@@ -470,9 +471,7 @@ def edit_record_callback(record_id):
         
     st.session_state.edited_record_id = record_id
     st.rerun() # FORZAR RERUN INMEDIATO
-# *******************************************************************
-# FIN DE LA MODIFICACIÓN CRÍTICA
-# *******************************************************************
+
 
 # --- CALLBACK DE SUBMIT DE FORMULARIO DE REGISTRO
 def submit_and_reset():
@@ -840,7 +839,7 @@ with tab_dashboard:
             
         st.markdown("---")
         
-        # --- GRÁFICOS RESTAURADOS ---
+        # --- GRÁFICOS ---
         st.subheader("Gráficos de Distribución del Tesoro")
         col_g1, col_g2 = st.columns(2)
 
@@ -892,64 +891,23 @@ with tab_dashboard:
         
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
-        st.subheader("🗺️ Detalles de las Aventuras Registradas")
-        st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición. La tabla está ordenada por **ID Ascendente (1, 2, 3...)**.")
-        
-        
-        # 1. Definir columnas y anchos para la tabla simulada
-        cols_widths = [1, 0.5, 1.2, 1.5, 1.5, 2, 1.2, 1.2, 1] 
-        cols_names = ["", "ID", "Fecha", "Lugar", "Ítem", "Paciente", "Valor Bruto", "Total Recibido", "Ajustes"]
-
-        # 2. Encabezados de la tabla
-        header_cols = st.columns(cols_widths)
-        for i, name in enumerate(cols_names):
-            header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
-        st.markdown("---")
-
-
-        # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
-        for index, row in df.iterrows():
-            
-            # Formatear datos
-            fecha_str = row['Fecha'].strftime('%Y-%m-%d')
-            bruto_str = format_currency(row['Valor Bruto'])
-            neto_str = format_currency(row['Total Recibido'])
-            ajustes_str = format_currency(row['Desc. Adicional'] + row['Desc. Tarjeta'] + row['Desc. Fijo Lugar'])
-            
-            # Crear las columnas para la fila actual
-            data_cols = st.columns(cols_widths)
-
-            # Botón de edición - CLAVE DINÁMICA ASEGURADA
-            with data_cols[0]:
-                st.button("Editar ✏️", key=f"edit_btn_{row['id']}", on_click=edit_record_callback, args=(row['id'],))
-            
-            # Datos de la fila
-            data_cols[1].markdown(f"<span class='data-row'>{row['id']}</span>", unsafe_allow_html=True)
-            data_cols[2].markdown(f"<span class='data-row'>{fecha_str}</span>", unsafe_allow_html=True)
-            data_cols[3].markdown(f"<span class='data-row'>{row['Lugar']}</span>", unsafe_allow_html=True)
-            data_cols[4].markdown(f"<span class='data-row'>{row['Ítem']}</span>", unsafe_allow_html=True)
-            data_cols[5].markdown(f"<span class='data-row'>{row['Paciente']}</span>", unsafe_allow_html=True)
-            data_cols[6].markdown(f"<span class='data-row'>{bruto_str}</span>", unsafe_allow_html=True)
-            data_cols[7].markdown(f"<span class='data-row'>{neto_str}</span>", unsafe_allow_html=True)
-            data_cols[8].markdown(f"<span class='data-row'>{ajustes_str}</span>", unsafe_allow_html=True)
-            
-            # Pequeña separación visual
-            st.markdown("---")
-        
-        
-        # --- FORMULARIO DE EDICIÓN (DESPLEGADO CONDICIONALMENTE) ---
         
         edited_id = st.session_state.edited_record_id
         
+        # =================================================================
+        # 🚨 LÓGICA DE AISLAMIENTO: O SE DIBUJA LA TABLA, O EL FORMULARIO
+        # =================================================================
+        
         if edited_id is not None and edited_id in df['id'].values:
+            
+            # -------------------------------------------------------------
+            # DIBUJAR FORMULARIO DE EDICIÓN
+            # -------------------------------------------------------------
             
             # 1. Cargar la fila a editar
             edit_row = df[df['id'] == edited_id].iloc[0]
             
             # 2. 🚨 CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO 🚨
-            
-            # Si las claves dinámicas ya existen, Streamlit las respeta. 
-            # Si NO existen, las cargamos de la fila de la BD.
             if f'edit_paciente_{edited_id}' not in st.session_state:
                  st.session_state[f'edit_paciente_{edited_id}'] = edit_row['Paciente']
                  st.session_state[f'edit_valor_bruto_{edited_id}'] = edit_row['Valor Bruto']
@@ -1070,7 +1028,7 @@ with tab_dashboard:
                 st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
 
 
-            # --- Botones de Control Final (Línea ~1089) ---
+            # --- Botones de Control Final ---
             st.markdown("---")
             
             # CORRECCIÓN DE COLUMNAS: Asegurar espacio para el botón de eliminar
@@ -1094,7 +1052,7 @@ with tab_dashboard:
                 
             # Botón de Eliminar
             with col_final3:
-                st.button( # Línea 1089 (Ahora limpia)
+                st.button( 
                     "🗑️ Eliminar", 
                     key=f'btn_delete_form_{edited_id}', 
                     type="danger", 
@@ -1103,6 +1061,55 @@ with tab_dashboard:
                     args=(edited_id,)
                 )
         
+        # =================================================================
+        # -----------------------------------------------------------------
+        # DIBUJAR TABLA DE REGISTROS (SOLO SI NO HAY ID EN EDICIÓN)
+        # -----------------------------------------------------------------
+        else:
+            st.subheader("🗺️ Detalles de las Aventuras Registradas")
+            st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición. La tabla está ordenada por **ID Ascendente (1, 2, 3...)**.")
+
+            # 1. Definir columnas y anchos para la tabla simulada
+            cols_widths = [1, 0.5, 1.2, 1.5, 1.5, 2, 1.2, 1.2, 1] 
+            cols_names = ["", "ID", "Fecha", "Lugar", "Ítem", "Paciente", "Valor Bruto", "Total Recibido", "Ajustes"]
+
+            # 2. Encabezados de la tabla
+            header_cols = st.columns(cols_widths)
+            for i, name in enumerate(cols_names):
+                header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
+            st.markdown("---")
+
+            # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
+            for index, row in df.iterrows():
+                
+                # Formatear datos
+                fecha_str = row['Fecha'].strftime('%Y-%m-%d')
+                bruto_str = format_currency(row['Valor Bruto'])
+                neto_str = format_currency(row['Total Recibido'])
+                ajustes_str = format_currency(row['Desc. Adicional'] + row['Desc. Tarjeta'] + row['Desc. Fijo Lugar'])
+                
+                # Crear las columnas para la fila actual
+                data_cols = st.columns(cols_widths)
+
+                # Botón de edición - CLAVE DINÁMICA ASEGURADA
+                with data_cols[0]:
+                    st.button("Editar ✏️", key=f"edit_btn_{row['id']}", on_click=edit_record_callback, args=(row['id'],))
+                
+                # Datos de la fila
+                data_cols[1].markdown(f"<span class='data-row'>{row['id']}</span>", unsafe_allow_html=True)
+                data_cols[2].markdown(f"<span class='data-row'>{fecha_str}</span>", unsafe_allow_html=True)
+                data_cols[3].markdown(f"<span class='data-row'>{row['Lugar']}</span>", unsafe_allow_html=True)
+                data_cols[4].markdown(f"<span class='data-row'>{row['Ítem']}</span>", unsafe_allow_html=True)
+                data_cols[5].markdown(f"<span class='data-row'>{row['Paciente']}</span>", unsafe_allow_html=True)
+                data_cols[6].markdown(f"<span class='data-row'>{bruto_str}</span>", unsafe_allow_html=True)
+                data_cols[7].markdown(f"<span class='data-row'>{neto_str}</span>", unsafe_allow_html=True)
+                data_cols[8].markdown(f"<span class='data-row'>{ajustes_str}</span>", unsafe_allow_html=True)
+                
+                # Pequeña separación visual
+                st.markdown("---")
+            
+        # =================================================================
+
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
