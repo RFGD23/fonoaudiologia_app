@@ -7,7 +7,7 @@ import plotly.express as px
 import numpy as np 
 import os 
 from dateutil.parser import parse
-from supabase import create_client, Client # <-- IMPORTACIONES NECESARIAS
+from supabase import create_client, Client 
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -437,7 +437,9 @@ def update_edit_bruto_price(edited_id):
     if new_total > 0:
         st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
         
-    # <-- CORRECCIÓN: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
+    st.session_state.edited_record_id = edited_id 
+    
     st.rerun() 
 
 def update_edit_desc_tarjeta(edited_id):
@@ -457,7 +459,9 @@ def update_edit_desc_tarjeta(edited_id):
     if new_total > 0:
         st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
 
-    # <-- CORRECCIÓN: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
+    st.session_state.edited_record_id = edited_id 
+    
     st.rerun() 
 
 def update_edit_tributo(edited_id):
@@ -500,7 +504,9 @@ def update_edit_tributo(edited_id):
     if new_total > 0:
         st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
         
-    # <-- CORRECCIÓN: ESTE ES EL PASO CLAVE QUE FALTABA O ESTABA FALLANDO
+    # 🚨 CORRECCIÓN DE ROBUSTEZ: ESTE ES EL PASO CLAVE QUE ASEGURA EL ESTADO
+    st.session_state.edited_record_id = edited_id 
+
     st.rerun()
 
 
@@ -1137,7 +1143,7 @@ with tab_dashboard:
                     width='stretch',
                     disabled=not is_valid_id_edit
                 ):
-                    # <-- CORRECCIÓN: ASIGNACIÓN DIRECTA E RERUN
+                    # <-- Lógica para asegurar la apertura
                     if st.session_state.edited_record_id is not None:
                         _cleanup_edit_state() 
                     st.session_state.edited_record_id = id_to_edit
