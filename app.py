@@ -132,10 +132,10 @@ def get_db_connection():
 
 @st.cache_data(show_spinner=False)
 def load_data_from_db():
-    """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID DESC**."""
+    """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID ASC (1, 2, 3...)**."""
     conn = get_db_connection()
-    # ORDENADO POR ID DESC para mostrar lo más nuevo primero.
-    df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id DESC", conn) 
+    # CAMBIO AQUÍ: ORDENADO POR ID ASC para mostrar la secuencia correcta.
+    df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id ASC", conn) 
     conn.close()
     
     if not df.empty:
@@ -518,6 +518,7 @@ def format_currency(value):
 
 def set_dark_mode_theme():
     """Establece transparencia y ajusta la apariencia para el tema oscuro."""
+    # CORRECCIÓN EN CSS: row-header para quitar el fondo feo
     dark_mode_css = '''
     <style>
     .stApp, [data-testid="stAppViewBlock"], .main { background-color: transparent !important; background-image: none !important; }
@@ -550,9 +551,9 @@ def set_dark_mode_theme():
     /* Estilo para la tabla (DataFrame simulado con columnas) */
     .row-header {
         font-weight: bold;
-        background-color: rgba(50, 50, 50, 0.8);
+        background-color: transparent; /* AHORA TRANSPARENTE */
         padding: 8px 0;
-        border-bottom: 2px solid #555;
+        border-bottom: 2px solid rgba(80, 80, 80, 0.5);
     }
     .data-row {
         border-bottom: 1px solid rgba(80, 80, 80, 0.5);
@@ -888,7 +889,7 @@ with tab_dashboard:
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
         st.subheader("🗺️ Detalles de las Aventuras Registradas")
-        st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición. La tabla está ordenada por **ID Descendente**.")
+        st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición. La tabla está ordenada por **ID Ascendente (1, 2, 3...)**.")
         
         
         # 1. Definir columnas y anchos para la tabla simulada
@@ -899,13 +900,13 @@ with tab_dashboard:
         # 2. Encabezados de la tabla
         header_cols = st.columns(cols_widths)
         for i, name in enumerate(cols_names):
-            # Usamos un span para aplicar el estilo de encabezado definido en el CSS
+            # Usamos un span para aplicar el estilo de encabezado definido en el CSS (ahora transparente)
             header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
         st.markdown("---")
 
 
         # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
-        # EL DATAFRAME df YA ESTÁ ORDENADO POR ID DESCENDENTE GRACIAS A load_data_from_db
+        # EL DATAFRAME df YA ESTÁ ORDENADO POR ID ASCENDENTE GRACIAS A load_data_from_db
         for index, row in df.iterrows():
             
             # Formatear datos
@@ -945,22 +946,17 @@ with tab_dashboard:
             edit_row = df[df['id'] == edited_id].iloc[0]
             
             # 2. 🚨 CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO 🚨
-            # Esto se hace aquí para asegurar que los valores del registro se cargan 
-            # justo antes de que Streamlit dibuje los widgets
             
-            # Asignar valores de la fila a las claves de sesión (solo si el valor es diferente o la clave no existe)
             current_paciente = st.session_state.get('edit_paciente', None)
             if current_paciente is None or current_paciente != edit_row['Paciente']:
                  st.session_state.edit_paciente = edit_row['Paciente']
                  
-            # Asignaciones para los números y fechas (el resto se inicializa al inicio del script)
             st.session_state.edit_valor_bruto = edit_row['Valor Bruto']
             st.session_state.edit_desc_adic = edit_row['Desc. Adicional']
             st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
             st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
             st.session_state.edit_fecha = edit_row['Fecha'].date()
             
-            # Se asigna Lugar, Ítem y Método Pago (sin chequear la existencia para asegurar que el selectbox se inicialice con el valor correcto)
             st.session_state.edit_lugar = edit_row['Lugar']
             st.session_state.edit_item = edit_row['Ítem']
             st.session_state.edit_metodo = edit_row['Método Pago']
@@ -980,17 +976,17 @@ with tab_dashboard:
                 with col_e1:
                     st.subheader("Datos Clave")
                     
-                    # FECHA (st.date_input) - Se elimina on_change
+                    # FECHA (st.date_input) 
                     st.date_input("🗓️ Fecha de Atención", st.session_state.edit_fecha, key="edit_fecha")
                     
-                    # LUGAR (st.selectbox) - Se elimina on_change
+                    # LUGAR (st.selectbox) 
                     try:
                         lugar_idx = LUGARES.index(st.session_state.edit_lugar)
                     except ValueError:
                         lugar_idx = 0
                     st.selectbox("📍 Lugar", options=LUGARES, key="edit_lugar", index=lugar_idx)
 
-                    # ÍTEM (st.selectbox) - Se elimina on_change
+                    # ÍTEM (st.selectbox) 
                     items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar, {}).keys())
                     try:
                          item_idx = items_edit_list.index(st.session_state.edit_item) if st.session_state.edit_item in items_edit_list else 0
@@ -998,10 +994,10 @@ with tab_dashboard:
                         item_idx = 0
                     st.selectbox("📋 Ítem", options=items_edit_list, key="edit_item", index=item_idx)
                     
-                    # PACIENTE (st.text_input)
+                    # PACIENTE (st.text_input) 
                     st.text_input("👤 Paciente", key="edit_paciente")
                     
-                    # MÉTODO DE PAGO (st.selectbox) - Se elimina on_change
+                    # MÉTODO DE PAGO (st.selectbox) 
                     try:
                         metodo_idx = METODOS_PAGO.index(st.session_state.edit_metodo)
                     except ValueError:
@@ -1015,25 +1011,23 @@ with tab_dashboard:
                 with col_e2:
                     st.subheader("Ajustes Financieros")
                     
-                    # VALOR BRUTO
+                    # VALOR BRUTO - CORREGIDO: SE ELIMINÓ on_change
                     st.number_input(
                         "💰 Valor Bruto (Recompensa)", 
                         min_value=0, 
                         step=1000, 
                         key="edit_valor_bruto",
-                        on_change=force_recalculate 
                     )
                     st.form_submit_button("🔄 Actualizar a Precio Base Sugerido", key='btn_update_price_form', on_click=update_edit_bruto_price, use_container_width=True)
 
                     st.markdown("---")
 
-                    # DESCUENTO ADICIONAL (Editable)
+                    # DESCUENTO ADICIONAL (Editable) - CORREGIDO: SE ELIMINÓ on_change
                     st.number_input(
                         "✂️ Ajuste Extra (Desc. Adic.)", 
                         min_value=-500000, 
                         step=1000, 
                         key="edit_desc_adic",
-                        on_change=force_recalculate
                     )
                     
                     st.markdown("---")
