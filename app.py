@@ -5,17 +5,18 @@ import json
 import time 
 import plotly.express as px
 import numpy as np 
-# import sqlite3  # YA NO USAMOS SQLITE3
-import psycopg2 # USAMOS ESTE PARA POSTGRESQL/SUPABASE
-from psycopg2 import sql # Para construir queries de forma segura
+import psycopg2 
+from psycopg2 import sql 
 import os 
 from dateutil.parser import parse
+# IMPORTACIONES ADICIONALES PARA FORZAR IPV4
+import socket 
+from urllib.parse import urlparse
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
-# DB_FILE ya no es necesario
 PRECIOS_FILE = 'precios_base.json'
 DESCUENTOS_FILE = 'descuentos_lugar.json'
 COMISIONES_FILE = 'comisiones_pago.json'
@@ -25,16 +26,11 @@ REGLAS_FILE = 'descuentos_reglas.json'
 def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
     try:
-        # Nota: estos archivos (json) se guardarán en el sistema de archivos
-        # de Streamlit Cloud. Son más estables que SQLite, pero se recomienda
-        # usar Google Sheets si estos archivos cambian muy a menudo.
         with open(filename, 'w') as f:
             json.dump(data, f, indent=4, sort_keys=True)
             f.flush() 
     except Exception as e:
         st.error(f"Error al guardar el archivo {filename}: {e}")
-
-# ... (load_config y el resto de la configuración de maestras se mantiene igual) ...
 
 def load_config(filename):
     """Carga la configuración desde un archivo JSON, creando el archivo si no existe."""
@@ -112,18 +108,37 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 
 
 # ===============================================
-# 2. FUNCIONES DE PERSISTENCIA (POSTGRESQL)
+# 2. FUNCIONES DE PERSISTENCIA (POSTGRESQL + IPv4)
 # ===============================================
 
 @st.cache_resource
 def get_db_connection():
-    """Establece la conexión a la base de datos PostgreSQL usando secrets."""
+    """
+    Establece la conexión a la base de datos PostgreSQL usando secrets.
+    Fuerza la conexión a usar IPv4 para resolver el error 'Cannot assign requested address'
+    que ocurre con el ruteo IPv6 en Streamlit Cloud.
+    """
     try:
-        conn = psycopg2.connect(st.secrets["connections"]["postgres_uri"])
-        conn.autocommit = True # Necesario para CREATE TABLE
+        # 1. Obtener la URI completa del secreto
+        uri = st.secrets["connections"]["postgres_uri"]
+        
+        # 2. Parsear la URI para obtener el host (db.emnqztaxybhbmkuryhem.supabase.co)
+        parsed_uri = urlparse(uri)
+        db_host = parsed_uri.hostname
+
+        # 3. Resolver el host a su dirección IPv4
+        # Esto ignora el IPv6 que causa el problema de ruteo
+        ipv4_address = socket.gethostbyname(db_host) 
+        
+        # 4. Reemplazar el nombre del host en la URI con su IP IPv4
+        uri_ipv4 = uri.replace(db_host, ipv4_address)
+
+        # 5. Intentar la conexión usando la URI modificada (IPv4)
+        conn = psycopg2.connect(uri_ipv4)
+        conn.autocommit = True 
         cursor = conn.cursor()
 
-        # Asegura la existencia de la tabla (usando comillas dobles para nombres con espacios)
+        # Asegura la existencia de la tabla 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS atenciones (
                 id SERIAL PRIMARY KEY,
@@ -141,12 +156,14 @@ def get_db_connection():
         """)
         conn.commit()
         return conn
+        
     except KeyError:
         st.error("🚨 Error: No se encontró la URI de PostgreSQL en `.streamlit/secrets.toml`.")
         return None
     except Exception as e:
         st.error(f"🚨 Error de conexión a la BD: {e}")
         return None
+
 
 @st.cache_data(show_spinner="Cargando Tesoro desde la Nube...")
 def load_data_from_db():
@@ -155,9 +172,8 @@ def load_data_from_db():
     if conn is None:
         return pd.DataFrame()
         
-    # Usar pd.read_sql para obtener los datos directamente
     try:
-        # Aseguramos el orden ascendente por ID
+        # Usar pd.read_sql para obtener los datos directamente
         df = pd.read_sql_query('SELECT * FROM atenciones ORDER BY id ASC', conn)
         
         if not df.empty:
@@ -245,9 +261,6 @@ def update_existing_record(record_dict):
         return False
     finally:
         cursor.close()
-
-# ... (El resto de las funciones de cálculo y la lógica de la interfaz de usuario se mantiene igual) ...
-
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
@@ -392,8 +405,6 @@ def _cleanup_edit_state():
     st.session_state.edited_record_id = None 
     st.session_state.input_id_edit = None 
     
-    # 🚨 LIMPIEZA DE ESTADOS DE ELIMINACIÓN ELIMINADA 🚨
-    
     
 def save_edit_state_to_df():
     """
@@ -533,7 +544,6 @@ def edit_record_callback(record_id):
         
     st.session_state.edited_record_id = record_id
 
-# 🚨 FUNCIONES DE CALLBACKS Y FLUJO DE ELIMINACIÓN ELIMINADAS 🚨
 
 def submit_and_reset():
     """Ejecuta la lógica de guardado del formulario de registro y luego resetea el formulario."""
@@ -671,13 +681,10 @@ if 'deletion_pending_cleanup' not in st.session_state:
 if 'input_id_edit' not in st.session_state:
     st.session_state.input_id_edit = None 
     
-# 🚨 ESTADOS DE ELIMINACIÓN ELIMINADOS 🚨
-
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
-# 🚨 BLOQUE DE LIMPIEZA POST-ELIMINACIÓN ELIMINADO 🚨
 
 # Bloque de limpieza de edición (mantenido)
 if st.session_state.deletion_pending_cleanup:
@@ -1174,8 +1181,6 @@ with tab_dashboard:
                     edit_record_callback(id_to_edit)
                     st.rerun()
             
-            # 🚨 SECCIÓN DE ELIMINACIÓN ELIMINADA 🚨
-            # 🚨 BLOQUE DE CONFIRMACIÓN DE ELIMINACIÓN ELIMINADO 🚨
 
             if id_to_edit is not None and not is_valid_id_edit and st.session_state.edited_record_id is None:
                  st.info(f"El ID {int(id_to_edit)} no existe para editar.")
