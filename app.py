@@ -859,25 +859,27 @@ with tab_dashboard:
 
         st.markdown("---")
         
-        # 🟢 CAMBIO IMPLEMENTADO AQUÍ: Agrupación por día en lugar de semana
-        st.subheader("Tesoro Líquido Acumulado por Día")
+        # 🟢 CAMBIO IMPLEMENTADO AQUÍ: Agrupación por semana corregida
+        st.subheader("Tesoro Líquido Acumulado por Semana")
         
         df_temp = df.copy()
-        # 1. Aseguramos que la columna sea un datetime real para operar con ella
         df_temp['Fecha_dt'] = pd.to_datetime(df_temp['Fecha']) 
         
-        # 2. Agrupar el Tesoro Líquido por la fecha exacta de registro (Día)
-        df_grouped_daily = df_temp.groupby('Fecha_dt').agg(
+        # 1. Agrupar por periodo semanal ('W').
+        df_grouped_weekly = df_temp.groupby(df_temp['Fecha_dt'].dt.to_period('W')).agg(
             {'Tesoro Líquido': 'sum'}
         ).reset_index()
         
+        # 2. Convertir el periodo semanal a la fecha de fin de semana para Plotly.
+        df_grouped_weekly['Semana'] = df_grouped_weekly['Fecha_dt'].apply(lambda x: x.end_time) 
+        
         # 3. Crear el gráfico de líneas
         fig = px.line(
-            df_grouped_daily, 
-            x='Fecha_dt', 
+            df_grouped_weekly, 
+            x='Semana', 
             y='Tesoro Líquido', 
-            title='Tesoro Líquido Acumulado por Día', 
-            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Fecha_dt': 'Día de Registro'}, 
+            title='Tesoro Líquido Acumulado por Semana', 
+            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Semana': 'Fin de Semana'}, 
             line_shape='spline'
         )
         # Añadir marcadores para ver los puntos de datos individuales
