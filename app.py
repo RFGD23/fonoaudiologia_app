@@ -113,7 +113,7 @@ def init_connection() -> Client:
     Inicializa y devuelve el cliente de Supabase usando los secretos de Streamlit.
     """
     try:
-        # <--- CAMBIO CLAVE: LEER CLAVES DIRECTAMENTE SIN .supabase --->
+        # LECTURA DE CLAVES A NIVEL RAÍZ (SOLUCIÓN A "no attribute 'supabase'")
         url: str = st.secrets["SUPABASE_URL"] 
         key: str = st.secrets["SUPABASE_KEY"]
         
@@ -125,7 +125,7 @@ def init_connection() -> Client:
         return create_client(url, key)
         
     except KeyError as e:
-        st.error(f"🚨 Error: No se encontró la clave necesaria en st.secrets: {e}. Asegúrate de que SUPABASE_URL y SUPABASE_KEY estén en el nivel raíz de tu secrets.toml.") # <--- CAMBIO CLAVE
+        st.error(f"🚨 Error: No se encontró la clave necesaria en st.secrets: {e}. Asegúrate de que SUPABASE_URL y SUPABASE_KEY estén en el nivel raíz de tu secrets.toml.")
         return None
     except Exception as e:
         st.error(f"🚨 Error al inicializar la conexión con Supabase: {e}")
@@ -183,7 +183,9 @@ def insert_new_record(record_dict):
         if response.data and len(response.data) > 0:
             return True
         else:
-            st.error(f"Error al insertar en la BD (Supabase API): {response.json()}") 
+            # Captura de error de API de Supabase más detallada
+            error_message = response.json() if hasattr(response, 'json') else str(response)
+            st.error(f"Error al insertar en la BD (Supabase API): {error_message}") 
             return False
 
     except Exception as e:
@@ -206,7 +208,9 @@ def update_existing_record(record_dict):
         if response.data and len(response.data) > 0:
             return True
         else:
-            st.error(f"Error al actualizar la BD (Supabase API): {response.json()}") 
+            # Captura de error de API de Supabase más detallada
+            error_message = response.json() if hasattr(response, 'json') else str(response)
+            st.error(f"Error al actualizar la BD (Supabase API): {error_message}") 
             return False
 
     except Exception as e:
@@ -215,7 +219,6 @@ def update_existing_record(record_dict):
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
-# (Sin Cambios)
 # ===============================================
 
 def format_currency(value):
@@ -288,7 +291,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 
 # ===============================================
 # 4. FUNCIONES DE CALLBACKS Y UTILIDADES
-# (Sin Cambios)
 # ===============================================
 
 def update_price_from_item_or_lugar():
@@ -416,7 +418,6 @@ def save_edit_state_to_df():
 
 # =========================================================================
 # FUNCIONES DE CALLBACKS DE EDICIÓN
-# (Sin Cambios)
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
@@ -435,6 +436,9 @@ def update_edit_bruto_price(edited_id):
     
     if new_total > 0:
         st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
+        
+    # <-- CAMBIO CLAVE: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    st.rerun() 
 
 def update_edit_desc_tarjeta(edited_id):
     """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
@@ -452,6 +456,9 @@ def update_edit_desc_tarjeta(edited_id):
     
     if new_total > 0:
         st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
+
+    # <-- CAMBIO CLAVE: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    st.rerun() 
 
 def update_edit_tributo(edited_id):
     """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y guarda)."""
@@ -489,14 +496,9 @@ def update_edit_tributo(edited_id):
     
     if new_total > 0:
         st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
-
-
-def edit_record_callback(record_id):
-    """Callback para establecer el ID a editar."""
-    if st.session_state.edited_record_id is not None:
-        _cleanup_edit_state() 
         
-    st.session_state.edited_record_id = record_id
+    # <-- CAMBIO CLAVE: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    st.rerun()
 
 
 def submit_and_reset():
@@ -834,7 +836,7 @@ with tab_registro:
 
         st.form_submit_button(
             "✅ ¡Guardar Aventura y Tesoro!", 
-            width='stretch', # <--- LIMPIEZA
+            width='stretch', 
             type="primary",
             on_click=submit_and_reset 
         )
@@ -881,12 +883,12 @@ with tab_dashboard:
         with col_g1:
             df_lugar = df.groupby('Lugar')['Tesoro Líquido'].sum().reset_index()
             fig_lugar = px.pie(df_lugar, values='Tesoro Líquido', names='Lugar', title='Distribución por Castillo/Lugar', hole=.3)
-            st.plotly_chart(fig_lugar, width='stretch') # <--- LIMPIEZA
+            st.plotly_chart(fig_lugar, width='stretch')
 
         with col_g2:
             df_item = df.groupby('Ítem')['Tesoro Líquido'].sum().reset_index().sort_values(by='Tesoro Líquido', ascending=False)
             fig_item = px.bar(df_item.head(10), x='Ítem', y='Tesoro Líquido', title='Top 10 Pociones/Procedimientos (Ingreso Líquido)', labels={'Tesoro Líquido': 'Tesoro Líquido', 'Ítem': 'Ítem'})
-            st.plotly_chart(fig_item, width='stretch') # <--- LIMPIEZA
+            st.plotly_chart(fig_item, width='stretch')
 
         st.markdown("---")
         
@@ -922,7 +924,7 @@ with tab_dashboard:
         # Opcional: Rotar etiquetas para mejor lectura
         fig.update_layout(xaxis_tickangle=-45)
         
-        st.plotly_chart(fig, width='stretch') # <--- LIMPIEZA
+        st.plotly_chart(fig, width='stretch')
         # 🟢 FIN DEL GRÁFICO
         
         
@@ -991,7 +993,7 @@ with tab_dashboard:
             with col_e2:
                 st.subheader("Ajustes Financieros")
                 st.number_input("💰 Valor Bruto (Recompensa)", min_value=0, step=1000, key=f"edit_valor_bruto_{edited_id}")
-                st.button("🔄 Actualizar a Precio Base Sugerido", key=f'btn_update_price_form_{edited_id}', on_click=update_edit_bruto_price, args=(edited_id,), width='stretch') # <--- LIMPIEZA
+                st.button("🔄 Actualizar a Precio Base Sugerido", key=f'btn_update_price_form_{edited_id}', on_click=update_edit_bruto_price, args=(edited_id,), width='stretch')
 
                 st.markdown("---")
 
@@ -1001,9 +1003,9 @@ with tab_dashboard:
                 
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
-                    st.button("🔄 Recalcular Tributo/Regla", key=f'btn_update_tributo_form_{edited_id}', on_click=update_edit_tributo, args=(edited_id,), width='stretch') # <--- LIMPIEZA
+                    st.button("🔄 Recalcular Tributo/Regla", key=f'btn_update_tributo_form_{edited_id}', on_click=update_edit_tributo, args=(edited_id,), width='stretch')
                 with col_btn2:
-                    st.button("🔄 Recalcular Tarjeta", key=f'btn_update_tarjeta_form_{edited_id}', on_click=update_edit_desc_tarjeta, args=(edited_id,), width='stretch') # <--- LIMPIEZA
+                    st.button("🔄 Recalcular Tarjeta", key=f'btn_update_tarjeta_form_{edited_id}', on_click=update_edit_desc_tarjeta, args=(edited_id,), width='stretch')
 
 
             with col_e3:
@@ -1056,7 +1058,7 @@ with tab_dashboard:
                     "💾 Aplicar Cambios y Cerrar Edición", 
                     type="primary",
                     key=f'btn_save_edit_form_{edited_id}', 
-                    width='stretch' # <--- LIMPIEZA
+                    width='stretch'
                 ):
                     new_total = save_edit_state_to_df()
                     st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
@@ -1064,7 +1066,7 @@ with tab_dashboard:
                     st.rerun() 
 
             with col_final2:
-                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, width='stretch') # <--- LIMPIEZA
+                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, width='stretch')
 
 
         # =================================================================
@@ -1094,7 +1096,7 @@ with tab_dashboard:
                 df_display_no_actions,
                 column_config=config_columns,
                 hide_index=True,
-                width='stretch', # <--- LIMPIEZA
+                width='stretch',
                 num_rows='fixed', 
                 key='ingresos_viewer'
             )
@@ -1129,10 +1131,13 @@ with tab_dashboard:
                     "✏️ Iniciar Edición", 
                     key='btn_start_edit_single', 
                     type="primary",
-                    width='stretch', # <--- LIMPIEZA
+                    width='stretch',
                     disabled=not is_valid_id_edit
                 ):
-                    edit_record_callback(id_to_edit)
+                    # <-- CAMBIO CLAVE: ASIGNACIÓN DIRECTA E RERUN
+                    if st.session_state.edited_record_id is not None:
+                        _cleanup_edit_state() 
+                    st.session_state.edited_record_id = id_to_edit
                     st.rerun()
             
 
@@ -1166,7 +1171,7 @@ with tab_config:
         edited_precios_df = st.data_editor(
             precios_df,
             key="precios_editor",
-            width='stretch', # <--- LIMPIEZA
+            width='stretch',
             num_rows="dynamic",
             column_config={
                 "Precio Sugerido": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d")
@@ -1202,7 +1207,7 @@ with tab_config:
         edited_descuentos_df = st.data_editor(
             descuentos_df,
             key="descuentos_editor",
-            width='stretch', # <--- LIMPIEZA
+            width='stretch',
             num_rows="dynamic",
             column_config={
                 "Desc. Fijo Base": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d")
@@ -1239,7 +1244,7 @@ with tab_config:
             edited_reglas_df = st.data_editor(
                 reglas_df,
                 key="reglas_editor",
-                width='stretch', # <--- LIMPIEZA
+                width='stretch',
                 num_rows="dynamic",
                 column_config={
                     "Tributo Diario": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d"),
@@ -1276,7 +1281,7 @@ with tab_config:
         edited_comisiones_df = st.data_editor(
             comisiones_df,
             key="comisiones_editor",
-            width='stretch', # <--- LIMPIEZA
+            width='stretch',
             num_rows="dynamic",
             column_config={
                 "Comisión %": st.column_config.NumberColumn(format="%.2f")
