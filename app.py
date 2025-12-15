@@ -5,13 +5,9 @@ import json
 import time 
 import plotly.express as px
 import numpy as np 
-import psycopg2 
-from psycopg2 import sql 
 import os 
 from dateutil.parser import parse
-# IMPORTACIONES ADICIONALES PARA FORZAR IPV4
-import socket 
-from urllib.parse import urlparse
+from supabase import create_client, Client # <-- NUEVAS IMPORTACIONES
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -108,73 +104,52 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 
 
 # ===============================================
-# 2. FUNCIONES DE PERSISTENCIA (POSTGRESQL + IPv4)
+# 2. FUNCIONES DE PERSISTENCIA (SUPABASE CLIENT)
 # ===============================================
 
 @st.cache_resource
-def get_db_connection():
+def init_connection() -> Client:
     """
-    Establece la conexión a la base de datos PostgreSQL usando secrets.
-    Fuerza la conexión a usar IPv4 para resolver el error 'Cannot assign requested address'
-    que ocurre con el ruteo IPv6 en Streamlit Cloud.
+    Inicializa y devuelve el cliente de Supabase usando los secretos de Streamlit.
     """
     try:
-        # 1. Obtener la URI completa del secreto
-        uri = st.secrets["connections"]["postgres_uri"]
+        # **IMPORTANTE:** Lee las claves de la sección [supabase]
+        url: str = st.secrets.supabase["SUPABASE_URL"]
+        key: str = st.secrets.supabase["SUPABASE_KEY"]
         
-        # 2. Parsear la URI para obtener el host (db.emnqztaxybhbmkuryhem.supabase.co)
-        parsed_uri = urlparse(uri)
-        db_host = parsed_uri.hostname
+        if not url or not key:
+             st.error("🚨 Error: SUPABASE_URL o SUPABASE_KEY no están configurados en los secretos.")
+             return None
 
-        # 3. Resolver el host a su dirección IPv4
-        # Esto ignora el IPv6 que causa el problema de ruteo
-        ipv4_address = socket.gethostbyname(db_host) 
+        # Crea el cliente de Supabase
+        return create_client(url, key)
         
-        # 4. Reemplazar el nombre del host en la URI con su IP IPv4
-        uri_ipv4 = uri.replace(db_host, ipv4_address)
-
-        # 5. Intentar la conexión usando la URI modificada (IPv4)
-        conn = psycopg2.connect(uri_ipv4)
-        conn.autocommit = True 
-        cursor = conn.cursor()
-
-        # Asegura la existencia de la tabla 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS atenciones (
-                id SERIAL PRIMARY KEY,
-                Fecha DATE,
-                Lugar TEXT,
-                Item TEXT,         
-                Paciente TEXT,
-                "Método Pago" TEXT,      
-                "Valor Bruto" INTEGER,
-                "Desc. Fijo Lugar" INTEGER, 
-                "Desc. Tarjeta" INTEGER,
-                "Desc. Adicional" INTEGER,
-                "Total Recibido" INTEGER
-            )
-        """)
-        conn.commit()
-        return conn
-        
-    except KeyError:
-        st.error("🚨 Error: No se encontró la URI de PostgreSQL en `.streamlit/secrets.toml`.")
+    except KeyError as e:
+        st.error(f"🚨 Error: No se encontró la clave necesaria en st.secrets: {e}. Asegúrate de usar [supabase] en tu secrets.toml.")
         return None
     except Exception as e:
-        st.error(f"🚨 Error de conexión a la BD: {e}")
+        st.error(f"🚨 Error al inicializar la conexión con Supabase: {e}")
         return None
 
+# Inicializa el cliente global
+supabase = init_connection()
 
-@st.cache_data(show_spinner="Cargando Tesoro desde la Nube...")
+
+@st.cache_data(show_spinner="Cargando Tesoro desde la Nube (Supabase Client)...", ttl=600)
 def load_data_from_db():
-    """Carga los datos desde PostgreSQL a un DataFrame."""
-    conn = get_db_connection()
-    if conn is None:
+    """Carga los datos desde Supabase a un DataFrame."""
+    if supabase is None:
         return pd.DataFrame()
         
     try:
-        # Usar pd.read_sql para obtener los datos directamente
-        df = pd.read_sql_query('SELECT * FROM atenciones ORDER BY id ASC', conn)
+        # Consulta select usando el cliente de Supabase
+        response = supabase.table("atenciones").select("*").order("id", desc=False).execute()
+        
+        # Verificar la respuesta y extraer los datos
+        if not response.data:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(response.data)
         
         if not df.empty:
             df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
@@ -191,79 +166,56 @@ def load_data_from_db():
         return df
         
     except Exception as e:
-        st.error(f"Error al cargar datos desde PostgreSQL: {e}")
+        st.error(f"Error al cargar datos desde Supabase: {e}")
         return pd.DataFrame()
 
 
 def insert_new_record(record_dict):
-    """Inserta un nuevo registro en la tabla de atenciones en PostgreSQL."""
-    conn = get_db_connection()
-    if conn is None:
+    """Inserta un nuevo registro en la tabla de atenciones en Supabase."""
+    if supabase is None:
         return False
         
-    cursor = conn.cursor()
-    
-    # Prepara los nombres de las columnas y placeholders
-    cols = list(record_dict.keys())
-    values = list(record_dict.values())
-    
-    # Crea una lista de identificadores SQL para las columnas (asegurando comillas dobles)
-    col_names = sql.SQL(', ').join(map(sql.Identifier, cols))
-    
-    # Crea una lista de placeholders para los valores (%s)
-    placeholders = sql.SQL(', ').join(sql.Placeholder() * len(values))
-    
-    # Construye el query usando sql.SQL para seguridad
-    query = sql.SQL("INSERT INTO atenciones ({}) VALUES ({})").format(col_names, placeholders)
-    
     try:
-        cursor.execute(query, values)
-        conn.commit()
-        return True
+        # Supabase insert
+        response = supabase.table("atenciones").insert(record_dict).execute()
+        
+        # Supabase client retorna un objeto; verificamos que haya datos insertados
+        if response.data and len(response.data) > 0:
+            return True
+        else:
+            st.error(f"Error al insertar en la BD (Supabase API): {response.json()}") 
+            return False
+
     except Exception as e:
-        st.error(f"Error al insertar en la BD: {e}")
-        conn.rollback()
+        st.error(f"Error al insertar en la BD (Supabase Client): {e}")
         return False
-    finally:
-        cursor.close()
 
 
 def update_existing_record(record_dict):
-    """Actualiza un registro existente usando su 'id' como clave en PostgreSQL."""
-    conn = get_db_connection()
-    if conn is None:
+    """Actualiza un registro existente usando su 'id' como clave en Supabase."""
+    if supabase is None:
         return False
         
-    cursor = conn.cursor()
-    record_id = record_dict.pop('id') 
+    record_id = record_dict.pop('id') # El payload de update no debe contener 'id'
     
-    set_clauses = []
-    values = []
-    
-    # Construir las cláusulas SET de forma segura
-    for k, v in record_dict.items():
-        set_clauses.append(sql.SQL("{} = %s").format(sql.Identifier(k)))
-        values.append(v)
-        
-    set_clause = sql.SQL(', ').join(set_clauses)
-    
-    # Añadir el ID al final de los valores y construir el query
-    values.append(record_id)
-    query = sql.SQL("UPDATE atenciones SET {} WHERE id = %s").format(set_clause)
-
     try:
-        cursor.execute(query, values)
-        conn.commit()
-        return True
+        # Supabase update: filtramos por ID, luego actualizamos los datos
+        response = supabase.table("atenciones").update(record_dict).eq('id', record_id).execute()
+        
+        # Verificamos si la actualización fue exitosa
+        if response.data and len(response.data) > 0:
+            return True
+        else:
+            st.error(f"Error al actualizar la BD (Supabase API): {response.json()}") 
+            return False
+
     except Exception as e:
-        st.error(f"Error al actualizar la BD: {e}")
-        conn.rollback()
+        st.error(f"Error al actualizar la BD (Supabase Client): {e}")
         return False
-    finally:
-        cursor.close()
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
+# (Sin Cambios)
 # ===============================================
 
 def format_currency(value):
@@ -336,6 +288,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 
 # ===============================================
 # 4. FUNCIONES DE CALLBACKS Y UTILIDADES
+# (Sin Cambios a la Lógica de Negocio)
 # ===============================================
 
 def update_price_from_item_or_lugar():
@@ -408,7 +361,7 @@ def _cleanup_edit_state():
     
 def save_edit_state_to_df():
     """
-    Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos PostgreSQL.
+    Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos Supabase.
     Retorna el Tesoro Líquido calculado.
     """
     if st.session_state.edited_record_id is None:
@@ -463,6 +416,7 @@ def save_edit_state_to_df():
 
 # =========================================================================
 # FUNCIONES DE CALLBACKS DE EDICIÓN
+# (Sin Cambios)
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
@@ -656,6 +610,7 @@ def set_dark_mode_theme():
 
 # ===============================================
 # 5. INTERFAZ DE USUARIO (FRONTEND)
+# (Sin Cambios)
 # ===============================================
 
 # 🚀 Configuración de la Página y Título
