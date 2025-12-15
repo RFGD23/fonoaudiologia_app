@@ -509,8 +509,21 @@ def delete_record_callback(record_id):
 # FUNCIONES DE CONTROL DE FLUJO DE ELIMINACIÓN DE 2 PASOS
 # -------------------------------------------------------------
 
-# La función start_delete_confirmation fue obsoleta y su lógica se movió directamente
-# al flujo de control principal después del botón, para evitar la APIException.
+def set_confirm_delete_id(record_id):
+    """
+    Callback crucial para establecer el ID de confirmación.
+    Fuerza un rerun para que el nuevo bloque condicional se dibuje en un ciclo limpio.
+    """
+    # 1. Limpia el estado de edición por si estaba abierto
+    if st.session_state.edited_record_id == record_id:
+        _cleanup_edit_state() 
+    
+    # 2. Seteamos la clave para activar la siguiente etapa (el bloque condicional)
+    st.session_state.confirming_delete_id = record_id
+    
+    # 🚨 SOLUCIÓN PARA StreamlitAPIException: Rerun explícito para estabilizar el estado
+    st.rerun() 
+
 
 def cancel_delete():
     """Callback para cancelar la eliminación."""
@@ -1151,7 +1164,7 @@ with tab_dashboard:
                     edit_record_callback(id_to_edit)
                     st.rerun()
             
-            # --- ELIMINACIÓN (Paso 1 - SIN CALLBACK on_click) ---
+            # --- ELIMINACIÓN (Paso 1 - CON CALLBACK on_click) ---
             with col_delete_input:
                 id_to_delete = st.number_input(
                     "ID a eliminar:", 
@@ -1164,29 +1177,20 @@ with tab_dashboard:
                 )
             
             is_valid_id_delete = id_to_delete is not None and id_to_delete in df['ID'].values
-            delete_button_key = f'btn_start_delete_single' # Clave simple (no depende de id)
             
             with col_delete_button:
                 st.markdown("<br>", unsafe_allow_html=True) # Espacio para alinear el botón
                 
-                # Botón de eliminación - SÓLO registra la pulsación
-                delete_clicked = st.button(
+                # 🚨 CAMBIO CLAVE: Usa on_click para delegar la mutación de estado
+                st.button( # <--- Esta es la línea que debe usar on_click
                     "🗑️ Eliminar Registro", 
-                    key=delete_button_key, 
+                    key='btn_start_delete_single', 
                     type="danger",
                     use_container_width=True, 
-                    disabled=not is_valid_id_delete
+                    disabled=not is_valid_id_delete,
+                    on_click=set_confirm_delete_id,
+                    args=(id_to_delete,)
                 )
-
-            # 🚨 LÓGICA DE DETECCIÓN DE PULSACIÓN DEL BOTÓN DE ELIMINAR 🚨
-            # Este es el bloque que evita la StreamlitAPIException
-            if delete_clicked and is_valid_id_delete:
-                # 1. Limpia el estado de edición por si estaba abierto
-                if st.session_state.edited_record_id == id_to_delete:
-                    _cleanup_edit_state() 
-                # 2. Setea el ID a confirmar (esto activará el bloque de confirmación abajo)
-                st.session_state.confirming_delete_id = id_to_delete
-                # 3. No hace falta rerun, el estado de confirmación se dibujará en el próximo ciclo.
 
             # 🚨 BLOQUE DE CONFIRMACIÓN (Paso 2 - Visible solo si se pulsó el botón de eliminar) 🚨
             if st.session_state.confirming_delete_id is not None:
@@ -1375,4 +1379,3 @@ with tab_config:
             time.sleep(0.1) 
             st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
-        
