@@ -60,7 +60,21 @@ def load_config(filename):
         st.error(f"Error: El archivo {filename} tiene un formato JSON inválido. Revisa su contenido. Detalle: {e}")
         return {} 
 
-# --- Cargar Variables Globales desde JSON ---
+def sanitize_number_input(value):
+    """
+    [FUNCIÓN REUBICADA] Convierte un valor de input de tabla (que puede ser NaN, string o float) a int. 
+    Esto soluciona el problema de la persistencia de los campos numéricos en la configuración.
+    """
+    # 1. Tratar valores nulos o vacíos
+    if pd.isna(value) or value is None or value == "":
+        return 0
+    
+    # 2. Convertir a float primero y luego a int (para manejar correctamente la notación científica o strings de números)
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        # 3. Si no es un número válido, devolver 0
+        return 0 
 
 def re_load_global_config():
     """Recarga todas las variables de configuración global y las listas derivadas, FORZANDO MAYÚSCULAS en las claves de Lugar y Método de Pago."""
@@ -82,7 +96,7 @@ def re_load_global_config():
     DESCUENTOS_REGLAS = {}
     for lugar, reglas in reglas_raw.items():
         lugar_upper = lugar.upper()
-        # CORRECCIÓN DE SYNTAXIS (AttributeError resuelto)
+        # LA LLAMADA A sanitize_number_input AHORA FUNCIONA
         reglas_upper = {dia.upper(): sanitize_number_input(monto) for dia, monto in reglas.items()} 
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
@@ -319,22 +333,6 @@ def format_currency(value):
     if value is None or not isinstance(value, (int, float)):
          value = 0
     return f"${int(value):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def sanitize_number_input(value):
-    """
-    [CORRECCIÓN CLAVE]: Convierte un valor de input de tabla (que puede ser NaN, string o float) a int. 
-    Esto soluciona el problema de la persistencia de los campos numéricos en la configuración.
-    """
-    # 1. Tratar valores nulos o vacíos
-    if pd.isna(value) or value is None or value == "":
-        return 0
-    
-    # 2. Convertir a float primero y luego a int (para manejar correctamente la notación científica o strings de números)
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        # 3. Si no es un número válido, devolver 0
-        return 0 
 
 def set_dark_mode_theme():
     """Establece transparencia y ajusta la apariencia de los contenedores para el tema oscuro."""
@@ -1083,7 +1081,7 @@ with tab_config:
                     help="Precio sugerido para este Ítem en este Lugar.",
                     min_value=0,
                     step=1000,
-                    # ELIMINADO EL FORMATO DE MONEDA PARA EVITAR EL SyntaxError
+                    # FORMATO ELIMINADO: AHORA DEBERÍA PERMITIR LA EDICIÓN
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True),
                 "Ítem": st.column_config.TextColumn("Ítem", required=True)
@@ -1141,7 +1139,7 @@ with tab_config:
                     help="Monto fijo que se descuenta por defecto en este Lugar.",
                     min_value=0,
                     step=500,
-                    # ELIMINADO EL FORMATO DE MONEDA PARA EVITAR EL SyntaxError
+                    # FORMATO ELIMINADO: AHORA DEBERÍA PERMITIR LA EDICIÓN
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True)
             },
@@ -1190,7 +1188,7 @@ with tab_config:
                     help="Monto que reemplaza al 'Desc. Fijo Base' si coincide el día y lugar.",
                     min_value=0,
                     step=500,
-                    # ELIMINADO EL FORMATO DE MONEDA PARA EVITAR EL SyntaxError
+                    # FORMATO ELIMINADO: AHORA DEBERÍA PERMITIR LA EDICIÓN
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True),
                 "Día": st.column_config.SelectboxColumn(
