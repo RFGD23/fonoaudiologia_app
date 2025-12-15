@@ -437,7 +437,7 @@ def update_edit_bruto_price(edited_id):
     if new_total > 0:
         st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
         
-    # <-- CAMBIO CLAVE: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    # <-- CORRECCIÓN: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
     st.rerun() 
 
 def update_edit_desc_tarjeta(edited_id):
@@ -457,7 +457,7 @@ def update_edit_desc_tarjeta(edited_id):
     if new_total > 0:
         st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
 
-    # <-- CAMBIO CLAVE: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    # <-- CORRECCIÓN: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
     st.rerun() 
 
 def update_edit_tributo(edited_id):
@@ -474,8 +474,11 @@ def update_edit_tributo(edited_id):
             if isinstance(st.session_state[f'edit_fecha_{edited_id}'], date):
                  current_date_obj = st.session_state[f'edit_fecha_{edited_id}']
             else:
-                 current_date_obj = parse(st.session_state[f'edit_fecha_{edited_id}']).date()
-                 
+                 try:
+                     current_date_obj = parse(st.session_state[f'edit_fecha_{edited_id}']).date()
+                 except Exception:
+                     current_date_obj = date.today()
+                     
             current_day_name = DIAS_SEMANA[current_date_obj.weekday()]
         except Exception:
             current_day_name = "" 
@@ -497,7 +500,7 @@ def update_edit_tributo(edited_id):
     if new_total > 0:
         st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
         
-    # <-- CAMBIO CLAVE: FUERZA LA RECARGA PARA MANTENER EL FORMULARIO VISIBLE
+    # <-- CORRECCIÓN: ESTE ES EL PASO CLAVE QUE FALTABA O ESTABA FALLANDO
     st.rerun()
 
 
@@ -1134,7 +1137,7 @@ with tab_dashboard:
                     width='stretch',
                     disabled=not is_valid_id_edit
                 ):
-                    # <-- CAMBIO CLAVE: ASIGNACIÓN DIRECTA E RERUN
+                    # <-- CORRECCIÓN: ASIGNACIÓN DIRECTA E RERUN
                     if st.session_state.edited_record_id is not None:
                         _cleanup_edit_state() 
                     st.session_state.edited_record_id = id_to_edit
