@@ -7,6 +7,7 @@ import plotly.express as px
 import numpy as np 
 import sqlite3 
 import os 
+from dateutil.parser import parse
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -70,6 +71,8 @@ def sanitize_number_input(value):
         return 0
     
     try:
+        # Intenta convertir a float primero (para manejar strings de números o NaN)
+        # luego a int para eliminar decimales.
         return int(float(value)) 
     except (ValueError, TypeError):
         return 0 
@@ -94,6 +97,7 @@ def re_load_global_config():
     DESCUENTOS_REGLAS = {}
     for lugar, reglas in reglas_raw.items():
         lugar_upper = lugar.upper()
+        # Aseguramos que los valores sean enteros válidos
         reglas_upper = {dia.upper(): sanitize_number_input(monto) for dia, monto in reglas.items()} 
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
@@ -141,7 +145,8 @@ def load_data_from_db():
     conn.close()
     
     if not df.empty:
-        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d')
+        # Intentar parsear a datetime.date para mejor consistencia con los inputs de Streamlit
+        df['Fecha'] = df['Fecha'].apply(lambda x: parse(x).date() if pd.notna(x) else None)
     
     if 'Item' in df.columns:
         df = df.rename(columns={'Item': 'Ítem'})
@@ -179,7 +184,10 @@ def update_existing_record(record_dict):
         conn.close()
         
 def delete_record(record_id):
-    """Elimina un registro de la base de datos por ID. (La función se mantiene, pero sin botones en la interfaz)"""
+    """
+    Elimina un registro de la base de datos por ID. 
+    (La función se mantiene en el backend, pero sin botones en la interfaz)
+    """
     conn = get_db_connection()
     query = "DELETE FROM atenciones WHERE id = ?"
     try:
@@ -212,24 +220,25 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
           }
     
     precio_base = PRECIOS_BASE_CONFIG.get(lugar_upper, {}).get(item, 0)
-    valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
+    # Si valor_bruto_override es None o 0, usa el precio base. Si se proporciona, usa el override.
+    valor_bruto = valor_bruto_override if (valor_bruto_override is not None and valor_bruto_override > 0) else precio_base
     
     # 2. LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo)
     desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
     
     # *** REGLA ESPECIAL PARA CPM: 48.7% DEL VALOR BRUTO ***
     if lugar_upper == 'CPM':
-        desc_fijo_lugar = valor_bruto * 0.487 
+        # Asegurarse de que el cálculo sea con el valor_bruto actual
+        desc_fijo_lugar = int(valor_bruto * 0.487) 
     # ******************************************************
     else:
         # 2.1. Revisar si existe una regla especial para el día
         try:
-            if isinstance(fecha_atencion, pd.Timestamp):
-                fecha_obj = fecha_atencion.date()
-            elif isinstance(fecha_atencion, date):
+            # Asegurar que fecha_atencion es un objeto date o datetime
+            if isinstance(fecha_atencion, date):
                 fecha_obj = fecha_atencion
             else:
-                fecha_obj = date.today()
+                fecha_obj = parse(fecha_atencion).date() # Intenta parsear si es string
             
             dia_semana_num = fecha_obj.weekday()
             dia_nombre = DIAS_SEMANA[dia_semana_num].upper() 
@@ -240,20 +249,22 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
                 if regla_especial is not None:
                     desc_fijo_lugar = regla_especial 
         except Exception:
+                # Si falla el parseo de fecha, se queda con el descuento fijo base
                 pass
 
     # 3. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
-    desc_tarjeta = valor_bruto * comision_pct
+    desc_tarjeta = int(valor_bruto * comision_pct)
     
     # 4. Cálculo final
     total_recibido = (
         valor_bruto 
         - desc_fijo_lugar 
         - desc_tarjeta 
-        - desc_adicional_manual
+        - desc_adicional_manual # Nota: Si es negativo, suma; si es positivo, resta (es un "descuento")
     )
     
+    # Asegurar que no hay números negativos aquí, aunque el total podría serlo
     return {
         'valor_bruto': int(valor_bruto),
         'desc_fijo_lugar': int(desc_fijo_lugar), 
@@ -278,6 +289,7 @@ def update_price_from_item_or_lugar():
         st.session_state.form_valor_bruto = 0
         return
         
+    # Lógica para manejar si el ítem actual no existe en el nuevo lugar
     if current_item not in items_disponibles:
         st.session_state.form_item = items_disponibles[0]
         item_calc_for_price = items_disponibles[0]
@@ -327,7 +339,6 @@ def _cleanup_edit_state():
         f'btn_update_price_form_{edited_id}', 
         f'btn_update_tributo_form_{edited_id}', 
         f'btn_update_tarjeta_form_{edited_id}', 
-        # f'btn_delete_form_{edited_id}' <-- CLAVE ELIMINADA DEFINITIVAMENTE
     ]
     
     for key in keys_to_delete:
@@ -363,6 +374,7 @@ def save_edit_state_to_df():
     # 3. Preparar el registro para la actualización de la BD
     data_to_update = {
         "id": record_id, 
+        # Aseguramos que la fecha se guarde como string 'YYYY-MM-DD'
         "Fecha": st.session_state[f'edit_fecha_{record_id}'].strftime('%Y-%m-%d'),
         "Lugar": st.session_state[f'edit_lugar_{record_id}'],
         "Item": st.session_state[f'edit_item_{record_id}'], # USAMOS 'Item' (SIN TILDE) para la BD
@@ -397,7 +409,7 @@ def update_edit_bruto_price(edited_id):
     # 2. Forzamos un guardado para reflejar el cambio en la BD (y recalculamos en vivo)
     new_total = save_edit_state_to_df() 
     if new_total > 0:
-        st.success(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}")
+        st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
         st.rerun() # FORZAR RERUN DESPUÉS DE GUARDAR
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
@@ -408,14 +420,14 @@ def update_edit_desc_tarjeta(edited_id):
     metodo_pago_actual = st.session_state[f'edit_metodo_{edited_id}']
     valor_bruto_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
     
-    comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual, 0.00)
+    comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
     nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
     
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
     
     new_total = save_edit_state_to_df() 
     if new_total > 0:
-        st.success(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}")
+        st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
         st.rerun() # FORZAR RERUN DESPUÉS DE GUARDAR
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
@@ -424,11 +436,12 @@ def update_edit_tributo(edited_id):
     """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y guarda)."""
     # ACCESO A CLAVES DINÁMICAS CORREGIDO
     current_lugar_upper = st.session_state[f'edit_lugar_{edited_id}'].upper()
+    current_valor_bruto = st.session_state[f'edit_valor_bruto_{edited_id}']
     desc_fijo_calc = DESCUENTOS_LUGAR.get(current_lugar_upper, 0) # Base
     
     # --- LÓGICA DE CÁLCULO DE TRIBUTO EN EDICIÓN ---
     if current_lugar_upper == 'CPM':
-        desc_fijo_calc = int(st.session_state[f'edit_valor_bruto_{edited_id}'] * 0.487)
+        desc_fijo_calc = int(current_valor_bruto * 0.487)
     else:
         try:
             current_day_name = DIAS_SEMANA[st.session_state[f'edit_fecha_{edited_id}'].weekday()]
@@ -439,7 +452,7 @@ def update_edit_tributo(edited_id):
              try: 
                  regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
                  if regla_especial_monto is not None:
-                     desc_fijo_calc = regla_especial_mula
+                     desc_fijo_calc = regla_especial_monto
              except Exception:
                  pass
              
@@ -447,21 +460,19 @@ def update_edit_tributo(edited_id):
     
     new_total = save_edit_state_to_df() 
     if new_total > 0:
-        st.success(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}")
+        st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
         st.rerun() # FORZAR RERUN DESPUÉS DE GUARDAR
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def delete_record_callback(record_id):
-    """Función de eliminación (Mantenida por si se reintroduce la funcionalidad fuera de la interfaz principal)."""
+    """Función de eliminación (Mantenida solo por si se reintroduce en un futuro)."""
     if delete_record(record_id):
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
-        st.session_state.edited_record_id = None
+        _cleanup_edit_state()
         st.rerun()
-    else:
-        st.error(f"No se pudo eliminar el registro ID {record_id}.")
-
+    # No se usa en la interfaz actual, pero se mantiene la función para completitud.
 
 def edit_record_callback(record_id):
     """Callback para establecer el ID a editar."""
@@ -470,13 +481,13 @@ def edit_record_callback(record_id):
         _cleanup_edit_state() 
         
     st.session_state.edited_record_id = record_id
-    # st.rerun() fue eliminado, confiamos en el rerun automático de Streamlit.
-
+    # st.rerun() no es necesario aquí, Streamlit se reinicia automáticamente si se presiona un botón
 
 # --- CALLBACK DE SUBMIT DE FORMULARIO DE REGISTRO
 def submit_and_reset():
     """Ejecuta la lógica de guardado del formulario de registro y luego resetea el formulario."""
     
+    # Validación básica
     if st.session_state.get('form_paciente', "") == "":
         st.session_state['save_error'] = "Por favor, ingresa el nombre del paciente antes de guardar."
         return 
@@ -487,7 +498,7 @@ def submit_and_reset():
         
     paciente_nombre_guardar = st.session_state.form_paciente 
     
-    resultados_calculados = calcular_ingreso( # Renombrado para evitar conflicto con la variable 'resultados'
+    resultados_calculados = calcular_ingreso( 
         st.session_state.form_lugar, 
         st.session_state.form_item, 
         st.session_state.form_metodo_pago, 
@@ -497,9 +508,10 @@ def submit_and_reset():
     )
     
     nueva_atencion = {
+        # Aseguramos formato 'YYYY-MM-DD' para la BD
         "Fecha": st.session_state.form_fecha.strftime('%Y-%m-%d'), 
         "Lugar": st.session_state.form_lugar, 
-        "Item": st.session_state.form_item, # USAMOS 'Item' (SIN TILDE)
+        "Item": st.session_state.form_item, 
         "Paciente": paciente_nombre_guardar, 
         "Método Pago": st.session_state.form_metodo_pago,
         "Valor Bruto": resultados_calculados['valor_bruto'],
@@ -609,7 +621,7 @@ if 'atenciones_df' not in st.session_state:
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
     
-# 🚨 Semáforo de RERUN (deshabilitado al quitar el botón de borrar) 🚨
+# 🚨 Semáforo de RERUN (se mantiene como buena práctica, aunque no se usa el botón de borrar) 🚨
 if 'deletion_pending_cleanup' not in st.session_state:
     st.session_state.deletion_pending_cleanup = False
 
@@ -617,7 +629,7 @@ if 'deletion_pending_cleanup' not in st.session_state:
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
-# 🚨 BLOQUE DE EJECUCIÓN DEL SEMÁFORO (Se mantiene, pero no debería activarse) 🚨
+# 🚨 BLOQUE DE EJECUCIÓN DEL SEMÁFORO (Por si acaso) 🚨
 if st.session_state.deletion_pending_cleanup:
     with st.spinner("Limpiando estado y recargando la aplicación..."):
         _cleanup_edit_state() 
@@ -788,7 +800,7 @@ with tab_registro:
                     valor_bruto_override=valor_bruto_calc 
                 )
 
-                st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
+                st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago.upper(), 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
                 # LÓGICA DE ETIQUETADO DEL TRIBUTO
                 current_lugar_upper = st.session_state.form_lugar 
@@ -849,7 +861,7 @@ with tab_dashboard:
         df_display = df[columns_to_show]
         
         # Formatear la columna de fecha para la visualización
-        df_display['Fecha'] = df_display['Fecha'].dt.strftime('%Y-%m-%d')
+        df_display['Fecha'] = df_display['Fecha'].astype(str) # Convertir date objects a string para visualización
         
         # --- MÉTRICAS PRINCIPALES ---
         total_ingreso = df['Tesoro Líquido'].sum()
@@ -898,10 +910,13 @@ with tab_dashboard:
         
         # Gráfico de Tendencia Semanal
         st.subheader("Tendencia Histórica del Tesoro")
-        df_grouped = df.groupby(df['Fecha'].dt.to_period('W')).agg(
+        # Asegurarse de que la columna 'Fecha' sea datetime para agrupar
+        df_temp = df.copy()
+        df_temp['Fecha_dt'] = pd.to_datetime(df_temp['Fecha']) 
+        df_grouped = df_temp.groupby(df_temp['Fecha_dt'].dt.to_period('W')).agg(
             {'Tesoro Líquido': 'sum'}
         ).reset_index()
-        df_grouped['Fecha'] = df_grouped['Fecha'].dt.to_timestamp()
+        df_grouped['Fecha'] = df_grouped['Fecha_dt'].dt.to_timestamp()
         
         fig = px.line(
             df_grouped, 
@@ -924,7 +939,7 @@ with tab_dashboard:
         # LÓGICA DE AISLAMIENTO: O SE DIBUJA LA TABLA, O EL FORMULARIO
         # =================================================================
         
-        if edited_id is not None and edited_id in df['ID'].values: # ¡Corregido: usar 'ID' en el DF filtrado!
+        if edited_id is not None and edited_id in df['ID'].values: 
             
             # -------------------------------------------------------------
             # DIBUJAR FORMULARIO DE EDICIÓN
@@ -934,22 +949,22 @@ with tab_dashboard:
             edit_row = df[df['ID'] == edited_id].iloc[0]
             
             # 2. 🚨 CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO 🚨
-            # ... (Toda la lógica de inicialización y dibujo del formulario de edición se mantiene aquí) ...
-            
+            # Esta lógica solo se ejecuta la primera vez que se abre el formulario para este ID
             if f'edit_paciente_{edited_id}' not in st.session_state:
                  st.session_state[f'edit_paciente_{edited_id}'] = edit_row['Paciente']
                  st.session_state[f'edit_valor_bruto_{edited_id}'] = edit_row['Valor Bruto']
-                 st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Ajuste'] # Usar Desc. Ajuste
-                 st.session_state.original_desc_fijo_lugar = edit_row['Desc. Tributo'] # Usar Desc. Tributo
+                 st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Ajuste']
+                 st.session_state.original_desc_fijo_lugar = edit_row['Desc. Tributo']
                  st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
-                 st.session_state[f'edit_fecha_{edited_id}'] = edit_row['Fecha'].date() # La fecha en el DF ya es un string formateado, necesitamos el date object original
+                 # Aseguramos que se guarde un objeto date, no string
+                 st.session_state[f'edit_fecha_{edited_id}'] = parse(str(edit_row['Fecha'])).date() 
                  st.session_state[f'edit_lugar_{edited_id}'] = edit_row['Lugar']
                  st.session_state[f'edit_item_{edited_id}'] = edit_row['Ítem']
                  st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
             
             
             # 3. Dibujar el formulario
-            st.markdown(f"## ✏️ Editando Registro ID: {edited_id} ({edit_row['Paciente']})")
+            st.markdown(f"## ✏️ Editando Registro ID: {edited_id} ({st.session_state[f'edit_paciente_{edited_id}']})")
             
             col_e1, col_e2, col_e3 = st.columns([1, 1, 1.2]) 
             
@@ -960,11 +975,7 @@ with tab_dashboard:
                 st.subheader("Datos Clave")
                 
                 # FECHA (st.date_input) - CLAVE DINÁMICA
-                # Reconvertir de string YYYY-MM-DD a date object si es necesario, si no, usar el date object que ya debería estar en state.
-                if isinstance(st.session_state[f'edit_fecha_{edited_id}'], str):
-                    fecha_display = date.fromisoformat(st.session_state[f'edit_fecha_{edited_id}'])
-                else:
-                    fecha_display = st.session_state[f'edit_fecha_{edited_id}']
+                fecha_display = st.session_state[f'edit_fecha_{edited_id}']
                     
                 st.date_input("🗓️ Fecha de Atención", fecha_display, key=f"edit_fecha_{edited_id}")
                 
@@ -1059,7 +1070,7 @@ with tab_dashboard:
                 st.markdown("---")
                 
                 st.success(f"### 💎 Tesoro Líquido (Vista Previa): {format_currency(total_liquido_live)}")
-                st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Tesoro Líquido'])}") # Usar Tesoro Líquido
+                st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Tesoro Líquido'])}")
 
 
             # --- Botones de Control Final ---
@@ -1085,7 +1096,6 @@ with tab_dashboard:
             with col_final2:
                 st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, use_container_width=True)
 
-            # 🚫 Botón de Eliminar (y su columna) ELIMINADO
 
         # =================================================================
         # 🚨 SECCIÓN: DIBUJAR TABLA DE DATOS CUANDO NO HAY EDICIÓN
@@ -1103,7 +1113,7 @@ with tab_dashboard:
             # 1. DIBUJAR LA TABLA DE DATOS (VISUALIZACIÓN)
             config_columns = {
                 'ID': st.column_config.NumberColumn(width='small', help="Identificador único del registro", disabled=True),
-                'Fecha': st.column_config.DateColumn(format="YYYY-MM-DD", disabled=True),
+                'Fecha': st.column_config.TextColumn(disabled=True),
                 'Lugar': st.column_config.TextColumn(disabled=True),
                 'Ítem': st.column_config.TextColumn(disabled=True),
                 'Paciente': st.column_config.TextColumn(disabled=True),
@@ -1126,18 +1136,28 @@ with tab_dashboard:
             )
 
             # 2. DIBUJAR LOS BOTONES DE ACCIÓN (Editar) Fila por Fila (fuera del data_editor)
-            st.markdown("#### Acciones por Registro")
             
+            # --- Cabecera Simulación de la Tabla de Acciones ---
+            # Usamos los mismos anchos para alinear ID y Acciones
+            col_header_id, col_header_edit, col_header_spacer = st.columns([0.15, 0.2, 0.65]) 
+            with col_header_id:
+                 st.markdown("---")
+            with col_header_edit:
+                 st.markdown("**ACCIONES**") # Título de la columna de acción
+            with col_header_spacer:
+                 st.markdown("---")
+
             for index, row in df.sort_values(by='ID', ascending=False).iterrows():
                 record_id = row['ID']
                 
                 # AISLAMIENTO CLAVE PARA EVITAR STREAMLITAPIEXCEPTION
                 with st.container():
-                    # 🚨 MODIFICACIÓN: Ajustamos a dos columnas: ID (0.15), Editar (0.2), Espacio (0.65)
+                    # 🚨 AJUSTE DE COLUMNAS: Proporción similar a la cabecera 🚨
                     col_id, col_edit, col_spacer = st.columns([0.15, 0.2, 0.65]) 
                     
                     with col_id:
-                        st.markdown(f"**ID:** `{record_id}`")
+                        # Usamos un espacio fijo para que se alinee mejor con el ID de la tabla.
+                        st.markdown(f"**ID:** `{record_id}`", help="Identificador único del registro")
                     
                     with col_edit:
                         st.button("Editar ✏️", 
@@ -1146,10 +1166,6 @@ with tab_dashboard:
                                   args=(record_id,), 
                                   use_container_width=True)
                     
-                    # 🚫 Botón de Eliminar ELIMINADO
-
-                    st.markdown("---") # Separador visual entre filas
-
         
         # =================================================================
     else:
@@ -1307,4 +1323,3 @@ with tab_config:
             re_load_global_config()
             st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
-        
