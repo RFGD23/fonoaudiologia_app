@@ -293,8 +293,14 @@ def _cleanup_edit_state():
     """Limpia las claves de sesión relacionadas con el modo de edición para forzar el cierre del expander."""
     st.session_state.edit_index = None
     st.session_state.edited_record_id = None 
+    
     # Eliminamos las claves de inputs para forzar la recarga en el próximo open
-    for key in ['edit_valor_bruto', 'edit_desc_adic', 'original_desc_fijo_lugar', 'original_desc_tarjeta']:
+    keys_to_delete = [
+        'edit_valor_bruto', 'edit_desc_adic', 'original_desc_fijo_lugar', 
+        'original_desc_tarjeta', 'edit_lugar', 'edit_item', 'edit_paciente', 
+        'edit_metodo', 'edit_fecha'
+    ]
+    for key in keys_to_delete:
         if key in st.session_state: del st.session_state[key]
 
 
@@ -388,6 +394,7 @@ def update_edit_tributo():
         desc_fijo_calc = int(st.session_state.edit_valor_bruto * 0.487)
     else:
         try:
+            # st.session_state.edit_fecha es un objeto date/datetime (del date_input)
             current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
         except Exception:
             current_day_name = "" 
@@ -525,6 +532,19 @@ if 'edit_index' not in st.session_state:
 
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
+
+# --- INICIALIZACIÓN ROBUSTA DE VARIABLES DE EDICIÓN (PREVENIR ATTRIBUTEERROR) ---
+# Se inicializan a valores seguros para que Streamlit no falle si intenta leerlas 
+# cuando la edición no está activa.
+if 'edit_lugar' not in st.session_state: st.session_state.edit_lugar = LUGARES[0] if LUGARES else ""
+if 'edit_item' not in st.session_state: st.session_state.edit_item = "" 
+if 'edit_paciente' not in st.session_state: st.session_state.edit_paciente = ""
+if 'edit_metodo' not in st.session_state: st.session_state.edit_metodo = METODOS_PAGO[0] if METODOS_PAGO else ""
+if 'edit_valor_bruto' not in st.session_state: st.session_state.edit_valor_bruto = 0
+if 'edit_desc_adic' not in st.session_state: st.session_state.edit_desc_adic = 0
+if 'original_desc_fijo_lugar' not in st.session_state: st.session_state.original_desc_fijo_lugar = 0
+if 'original_desc_tarjeta' not in st.session_state: st.session_state.original_desc_tarjeta = 0
+if 'edit_fecha' not in st.session_state: st.session_state.edit_fecha = date.today() 
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
@@ -808,6 +828,7 @@ with tab_dashboard:
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
         st.subheader("🗺️ Detalles de las Aventuras Registradas")
         
+        # 🚨 CAMBIO 1: Incluir 'id' en la columna de visualización
         cols_to_display = ['id', 'Fecha', 'Lugar', 'Ítem', 'Paciente', 'Método Pago', 
                            'Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 
                            'Desc. Adicional', 'Total Recibido']
@@ -819,14 +840,14 @@ with tab_dashboard:
             df_display[col] = df_display[col].apply(format_currency)
 
         st.dataframe(
-            df_display.drop(columns=['id']), 
+            df_display, # <--- Se muestra df_display completo, con 'id'
             use_container_width=True, 
             hide_index=True
         )
 
         st.markdown("---")
         
-        st.info("Para editar un registro, ingresa el ID que se encuentra en la columna 'ID' (primera columna del Dataframe).")
+        st.info("Para editar un registro, ingresa el ID que se encuentra en la columna 'id' (primera columna del Dataframe).")
         
         edit_index_input = st.number_input(
             "✏️ ID del Registro para Editar/Revisar", 
@@ -843,15 +864,19 @@ with tab_dashboard:
             st.session_state.edit_index = edit_row.name 
             st.session_state.edited_record_id = edit_row['id'] 
             
-            # Inicialización de estado para la edición
+            # 🚨 CAMBIO 2: Inicialización de estado forzada al entrar al bloque 🚨
+            # Cargamos siempre los datos del registro seleccionado, sobreescribiendo el estado anterior.
             for col in ['Lugar', 'Ítem', 'Paciente', 'Método Pago']:
-                 if f'edit_{col.lower().replace("í", "i")}' not in st.session_state:
-                     st.session_state[f'edit_{col.lower().replace("í", "i")}'] = edit_row[col]
+                 # Quitamos el 'if not in st.session_state' para asegurar la carga
+                 st.session_state[f'edit_{col.lower().replace("í", "i")}'] = edit_row[col]
             
-            if 'edit_valor_bruto' not in st.session_state: st.session_state.edit_valor_bruto = edit_row['Valor Bruto']
-            if 'edit_desc_adic' not in st.session_state: st.session_state.edit_desc_adic = edit_row['Desc. Adicional']
-            if 'original_desc_fijo_lugar' not in st.session_state: st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
-            if 'original_desc_tarjeta' not in st.session_state: st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
+            # Asignaciones para los números y fechas
+            st.session_state.edit_valor_bruto = edit_row['Valor Bruto']
+            st.session_state.edit_desc_adic = edit_row['Desc. Adicional']
+            st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
+            st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
+            st.session_state.edit_fecha = edit_row['Fecha'].date()
+
 
             
             # 💡 MOSTRAMOS EL CUADRO DE EDICIÓN DIRECTAMENTE
@@ -868,7 +893,7 @@ with tab_dashboard:
                 st.subheader("Datos Clave")
                 
                 # FECHA (st.date_input)
-                fecha_val = edit_row['Fecha'].date()
+                fecha_val = st.session_state.edit_fecha # Usar el valor ya cargado
                 st.date_input("🗓️ Fecha de Atención", fecha_val, key="edit_fecha", on_change=update_edit_tributo)
                 
                 # LUGAR (st.selectbox)
