@@ -355,9 +355,9 @@ def _cleanup_edit_state():
         f'btn_update_tarjeta_form_{edited_id}', 
     ]
     
-    # También añadimos la clave fallida al cleanup por si se creó accidentalmente
-    # keys_to_delete.append(f'edit_desc_adicional_manual_{edited_id}') # Ya no es necesario
-
+    # Eliminamos la clave que causaba problemas si se llegaba a crear incorrectamente
+    # keys_to_delete.append(f'edit_desc_adicional_manual_{edited_id}') 
+    
     for key in keys_to_delete:
         if key in st.session_state: del st.session_state[key] 
         
@@ -378,7 +378,7 @@ def save_edit_state_to_df():
     
     # LECTURA SEGURA DE TIPOS NUMÉRICOS
     valor_bruto_final = int(st.session_state.get(f'edit_valor_bruto_{record_id}', 0))
-    # *** CLAVE CORREGIDA USANDO .get() PARA ROBUSTEZ ***
+    # *** LECTURA DE CLAVE CORREGIDA Y SEGURA ***
     desc_adicional_final = int(st.session_state.get(f'edit_desc_adic_{record_id}', 0)) 
     
     # Obtener los descuentos actualizados (o los originales si no se recalcularon)
@@ -436,18 +436,18 @@ def update_edit_bruto_price(edited_id):
     if new_total > 0:
         st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
         
-    # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
+    # Asegurar el ID antes de la recarga
     st.session_state.edited_record_id = edited_id 
     
     st.rerun() 
 
 def update_edit_desc_tarjeta(edited_id):
     """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
-    # LECTURA ROBUSTA Y CORREGIDA DEL KEY
+    # LECTURA ROBUSTA DEL ESTADO
     metodo_pago_actual = st.session_state.get(f'edit_metodo_{edited_id}', '').upper()
     valor_bruto_actual = int(st.session_state.get(f'edit_valor_bruto_{edited_id}', 0))
     
-    # 💥 CORRECCIÓN CRÍTICA: Se corrige la clave para acceder al Desc. Adicional Manual
+    # 💥 CORRECCIÓN CRÍTICA: Se corrige la clave 'edit_desc_adicional_manual' a 'edit_desc_adic'
     desc_adicional_manual_actual = int(st.session_state.get(f'edit_desc_adic_{edited_id}', 0))
 
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual, 0.00)
@@ -462,7 +462,7 @@ def update_edit_desc_tarjeta(edited_id):
     if new_total > 0:
         st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
 
-    # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
+    # Asegurar el ID antes de la recarga
     st.session_state.edited_record_id = edited_id 
     
     st.rerun() 
@@ -513,7 +513,7 @@ def update_edit_tributo(edited_id):
     if new_total > 0:
         st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
         
-    # 🚨 CORRECCIÓN DE ROBUSTEZ: ESTE ES EL PASO CLAVE QUE ASEGURA EL ESTADO
+    # Asegurar el ID antes de la recarga
     st.session_state.edited_record_id = edited_id 
 
     st.rerun()
@@ -962,7 +962,6 @@ with tab_registro:
                                     key=f'edit_valor_bruto_{edited_id}', 
                                     on_change=force_recalculate)
                     
-                    # CLAVE DE INPUT CORREGIDA PARA CONCORDAR CON LA LECTURA
                     st.number_input("✂️ **Desc. Adicional Manual**", 
                                     step=1000, 
                                     key=f'edit_desc_adic_{edited_id}', 
@@ -986,7 +985,6 @@ with tab_registro:
                     # Valores actuales para display
                     current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', record_dict['Desc. Fijo Lugar'])
                     current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', record_dict['Desc. Tarjeta'])
-                    # LECTURA DE LA CLAVE CORREGIDA
                     current_desc_adic = st.session_state.get(f'edit_desc_adic_{edited_id}', 0)
                     
                     current_total = (
