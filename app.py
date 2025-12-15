@@ -152,7 +152,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     # *** REGLA ESPECIAL PARA CPM: 48.7% DEL VALOR BRUTO ***
     if lugar_upper == 'CPM':
         # El descuento fijo es el 48.7% del valor bruto
-        desc_fijo_lugar = valor_bruto * 0.487
+        desc_fijo_lugar = valor_bruto * 0.487 
     # ******************************************************
     else:
         # Si no es CPM, se aplica el descuento fijo normal (base o por regla diaria)
@@ -193,7 +193,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     return {
         'valor_bruto': int(valor_bruto),
-        'desc_fijo_lugar': int(desc_fijo_lugar), # Se redondea el resultado del 51.3%
+        'desc_fijo_lugar': int(desc_fijo_lugar), # Se redondea el resultado del 48.7%
         'desc_tarjeta': int(desc_tarjeta),
         'total_recibido': int(total_recibido)
     }
@@ -355,8 +355,8 @@ def update_edit_tributo():
     
     # --- LÓGICA DE CÁLCULO DE TRIBUTO EN EDICIÓN ---
     if current_lugar_upper.upper() == 'CPM':
-        # Aplica la regla del 51.3% si es CPM
-        desc_fijo_calc = int(st.session_state.edit_valor_bruto * 0.513)
+        # Aplica la regla del 48.7% si es CPM
+        desc_fijo_calc = int(st.session_state.edit_valor_bruto * 0.487)
     else:
         # Lógica de cálculo del Tributo normal (base o regla diaria)
         try:
@@ -706,7 +706,7 @@ with tab_registro:
                 
                 # AJUSTE DE ETIQUETA PARA CPM
                 if current_lugar_upper.upper() == 'CPM':
-                    desc_lugar_label = f"Tributo al Castillo (CPM - 51.3% Bruto)"
+                    desc_lugar_label = f"Tributo al Castillo (CPM - 48.7% Bruto)"
                 else:
                     # LÓGICA DE ETIQUETADO DEL TRIBUTO NORMAL
                     try:
@@ -1186,7 +1186,7 @@ with tab_dashboard:
                 current_lugar_upper = st.session_state.edit_lugar 
                 
                 if current_lugar_upper.upper() == 'CPM':
-                    desc_lugar_label = f"Tributo al Castillo (CPM - 51.3% Bruto)"
+                    desc_lugar_label = f"Tributo al Castillo (CPM - 48.7% Bruto)"
                 else:
                     current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
                     desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
@@ -1323,7 +1323,7 @@ with tab_config:
     
     with st.expander("✂️ Administrar Descuentos Fijos y Reglas (Tributo al Castillo)"):
         st.subheader("Tributo Fijo al Castillo (Descuento Base)")
-        st.info("⚠️ El lugar **CPM** tiene una regla de cálculo automática (51.3% del Valor Bruto). El valor que se ingrese aquí para 'CPM' **será ignorado** en el cálculo final.")
+        st.info("⚠️ El lugar **CPM** tiene una regla de cálculo automática (**48.7%** del Valor Bruto). El valor que se ingrese aquí para 'CPM' **será ignorado** en el cálculo final.")
 
         df_descuentos_fijos = pd.DataFrame(
             list(DESCUENTOS_LUGAR.items()), 
