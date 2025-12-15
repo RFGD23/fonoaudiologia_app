@@ -134,7 +134,8 @@ def get_db_connection():
 def load_data_from_db():
     """Carga los datos desde SQLite a un DataFrame."""
     conn = get_db_connection()
-    df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id DESC", conn)
+    # Cambiamos el orden a DESC para que los últimos registros aparezcan primero
+    df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id DESC", conn) 
     conn.close()
     
     if not df.empty:
@@ -174,6 +175,21 @@ def update_existing_record(record_dict):
         return False
     finally:
         conn.close()
+        
+def delete_record(record_id):
+    """Elimina un registro de la base de datos por ID."""
+    conn = get_db_connection()
+    query = "DELETE FROM atenciones WHERE id = ?"
+    try:
+        conn.execute(query, (record_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error al eliminar el registro ID {record_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
@@ -291,7 +307,7 @@ def update_edit_price():
 
 def _cleanup_edit_state():
     """Limpia las claves de sesión relacionadas con el modo de edición para forzar el cierre del expander."""
-    st.session_state.edit_index = None
+    st.session_state.edit_index = None # Ya no se usa, pero lo mantenemos por si acaso
     st.session_state.edited_record_id = None 
     
     # Eliminamos las claves de inputs para forzar la recarga en el próximo open
@@ -301,12 +317,14 @@ def _cleanup_edit_state():
         'edit_metodo', 'edit_fecha'
     ]
     for key in keys_to_delete:
-        if key in st.session_state: del st.session_state[key]
+        # Solo eliminamos si existen para evitar un KeyError
+        if key in st.session_state: del st.session_state[key] 
 
 
 def save_edit_state_to_df():
     """Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos SQLite."""
     if st.session_state.edited_record_id is None:
+        st.warning("Error: No hay un ID de registro para guardar la edición.")
         return 0
         
     record_id = st.session_state.edited_record_id
@@ -355,15 +373,15 @@ def update_edit_bruto_price():
     lugar_edit = st.session_state.edit_lugar.upper()
     item_edit = st.session_state.edit_item
     
+    # 1. Recalcular el precio sugerido
     nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, st.session_state.edit_valor_bruto)
     st.session_state.edit_valor_bruto = int(nuevo_precio_base)
     
-    # Forzamos un guardado para reflejar el cambio en la BD (y recalculamos en vivo)
+    # 2. Forzamos un guardado para reflejar el cambio en la BD (y recalculamos en vivo)
     new_total = save_edit_state_to_df() 
     if new_total > 0:
         st.success(f"Valor Bruto actualizado a {format_currency(st.session_state.edit_valor_bruto)}. Nuevo Tesoro Líquido: {format_currency(new_total)}")
         # Forzamos el rerun después de guardar para que el expander refleje el estado
-        _cleanup_edit_state()
         st.session_state.rerun_after_edit = True 
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
@@ -379,7 +397,6 @@ def update_edit_desc_tarjeta():
     new_total = save_edit_state_to_df() 
     if new_total > 0:
         st.success(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}. Nuevo Tesoro Líquido: {format_currency(new_total)}")
-        _cleanup_edit_state()
         st.session_state.rerun_after_edit = True 
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
@@ -412,10 +429,25 @@ def update_edit_tributo():
     new_total = save_edit_state_to_df() 
     if new_total > 0:
         st.success(f"Tributo recalculado a {format_currency(desc_fijo_calc)}. Nuevo Tesoro Líquido: {format_currency(new_total)}")
-        _cleanup_edit_state()
         st.session_state.rerun_after_edit = True 
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
+
+def delete_record_callback(record_id):
+    """Callback para eliminar un registro de la base de datos."""
+    if delete_record(record_id):
+        load_data_from_db.clear()
+        st.session_state.atenciones_df = load_data_from_db()
+        _cleanup_edit_state() # Limpiar estado de edición si se elimina el registro actual
+        st.success(f"Registro ID {record_id} eliminado exitosamente.")
+        st.session_state.rerun_after_edit = True 
+    else:
+        st.error(f"No se pudo eliminar el registro ID {record_id}.")
+
+def edit_record_callback(record_id):
+    """Callback para establecer el ID a editar y recargar la página."""
+    st.session_state.edited_record_id = record_id
+    st.session_state.rerun_after_edit = True # Forzar recarga para abrir el formulario
 
 
 def submit_and_reset():
@@ -490,12 +522,43 @@ def set_dark_mode_theme():
     <style>
     .stApp, [data-testid="stAppViewBlock"], .main { background-color: transparent !important; background-image: none !important; }
     [data-testid="stSidebarContent"] { background-color: rgba(30, 30, 30, 0.9) !important; color: white; }
+    /* Ajustes para el tema oscuro para mejor visibilidad */
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
-    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child, .stRadio > div { 
+    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child, .stRadio > div,
+    .stSelectbox, .stDateInput, .stTextInput, .stNumberInput, .stRadio { 
         background-color: rgba(10, 10, 10, 0.6) !important; border-radius: 10px; padding: 10px;
+        color: white;
     } 
-    .stDataFrame, .stTable { background-color: rgba(0, 0, 0, 0.4) !important; }
+    /* Estilo para los botones en las filas */
+    .stButton > button {
+        background-color: #4CAF50; /* Green */
+        color: white;
+        padding: 5px 10px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 12px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 8px;
+        border: none;
+    }
+    .stButton > button:hover {
+        background-color: #45a049;
+    }
+    /* Estilo para la tabla (DataFrame simulado con columnas) */
+    .row-header {
+        font-weight: bold;
+        background-color: rgba(50, 50, 50, 0.8);
+        padding: 8px 0;
+        border-bottom: 2px solid #555;
+    }
+    .data-row {
+        border-bottom: 1px solid rgba(80, 80, 80, 0.5);
+        padding: 4px 0;
+    }
+
     h1, h2, h3, h4, h5, h6, label, .css-1d391kg, [data-testid="stSidebarContent"] *, [data-testid="stHeader"] * { color: white !important; }
     .streamlit-expander label, div.stRadio > label { color: white !important; }
     </style>
@@ -527,9 +590,7 @@ if st.session_state.rerun_after_edit:
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data_from_db()
     
-if 'edit_index' not in st.session_state:
-    st.session_state.edit_index = None 
-
+# Mantenemos solo el ID que se va a editar (el índice de la fila ya no es tan crítico)
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
 
@@ -827,191 +888,214 @@ with tab_dashboard:
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
         st.subheader("🗺️ Detalles de las Aventuras Registradas")
+        st.info("Utiliza el botón **Editar ✏️** al lado de cada registro para abrir el formulario de edición.")
         
-        # 🚨 CAMBIO 1: Incluir 'id' en la columna de visualización
-        cols_to_display = ['id', 'Fecha', 'Lugar', 'Ítem', 'Paciente', 'Método Pago', 
-                           'Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 
-                           'Desc. Adicional', 'Total Recibido']
         
-        df_display = df[cols_to_display].copy()
-        df_display['id'] = df_display['id'].astype(str)
-        
-        for col in ['Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido']:
-            df_display[col] = df_display[col].apply(format_currency)
+        # 1. Definir columnas y anchos para la tabla simulada
+        # Anchos relativos: [Botón, ID, Fecha, Lugar, Ítem, Paciente, Bruto, Neto, Ajustes]
+        cols_widths = [1, 0.5, 1.2, 1.5, 1.5, 2, 1.2, 1.2, 1] 
+        cols_names = ["", "ID", "Fecha", "Lugar", "Ítem", "Paciente", "Valor Bruto", "Total Recibido", "Ajustes"]
 
-        st.dataframe(
-            df_display, # <--- Se muestra df_display completo, con 'id'
-            use_container_width=True, 
-            hide_index=True
-        )
-
+        # 2. Encabezados de la tabla
+        header_cols = st.columns(cols_widths)
+        for i, name in enumerate(cols_names):
+            # Usamos un span para aplicar el estilo de encabezado definido en el CSS
+            header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
         st.markdown("---")
-        
-        st.info("Para editar un registro, ingresa el ID que se encuentra en la columna 'id' (primera columna del Dataframe).")
-        
-        edit_index_input = st.number_input(
-            "✏️ ID del Registro para Editar/Revisar", 
-            min_value=1, 
-            max_value=df['id'].max() if 'id' in df.columns and not df.empty else 1, 
-            step=1, 
-            key='edit_index_selected'
-        )
-        
-        # AQUI INICIA LA LÓGICA CONDICIONAL DE EDICIÓN
-        if edit_index_input in df['id'].values:
+
+
+        # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
+        for index, row in df.iterrows():
             
-            edit_row = df[df['id'] == edit_index_input].iloc[0]
-            st.session_state.edit_index = edit_row.name 
-            st.session_state.edited_record_id = edit_row['id'] 
+            # Formatear datos
+            fecha_str = row['Fecha'].strftime('%Y-%m-%d')
+            bruto_str = format_currency(row['Valor Bruto'])
+            neto_str = format_currency(row['Total Recibido'])
+            ajustes_str = format_currency(row['Desc. Adicional'] + row['Desc. Tarjeta'] + row['Desc. Fijo Lugar'])
             
-            # 🚨 CAMBIO 2: Inicialización de estado forzada al entrar al bloque 🚨
-            # Cargamos siempre los datos del registro seleccionado, sobreescribiendo el estado anterior.
-            for col in ['Lugar', 'Ítem', 'Paciente', 'Método Pago']:
-                 # Quitamos el 'if not in st.session_state' para asegurar la carga
-                 st.session_state[f'edit_{col.lower().replace("í", "i")}'] = edit_row[col]
+            # Crear las columnas para la fila actual
+            data_cols = st.columns(cols_widths)
+
+            # Botón de edición
+            with data_cols[0]:
+                st.button("Editar ✏️", key=f"edit_btn_{row['id']}", on_click=edit_record_callback, args=(row['id'],))
             
-            # Asignaciones para los números y fechas
+            # Datos de la fila
+            data_cols[1].markdown(f"<span class='data-row'>{row['id']}</span>", unsafe_allow_html=True)
+            data_cols[2].markdown(f"<span class='data-row'>{fecha_str}</span>", unsafe_allow_html=True)
+            data_cols[3].markdown(f"<span class='data-row'>{row['Lugar']}</span>", unsafe_allow_html=True)
+            data_cols[4].markdown(f"<span class='data-row'>{row['Ítem']}</span>", unsafe_allow_html=True)
+            data_cols[5].markdown(f"<span class='data-row'>{row['Paciente']}</span>", unsafe_allow_html=True)
+            data_cols[6].markdown(f"<span class='data-row'>{bruto_str}</span>", unsafe_allow_html=True)
+            data_cols[7].markdown(f"<span class='data-row'>{neto_str}</span>", unsafe_allow_html=True)
+            data_cols[8].markdown(f"<span class='data-row'>{ajustes_str}</span>", unsafe_allow_html=True)
+            
+            # Pequeña separación visual
+            st.markdown("---")
+        
+        
+        # --- FORMULARIO DE EDICIÓN (DESPLEGADO CONDICIONALMENTE) ---
+        
+        edited_id = st.session_state.edited_record_id
+        
+        if edited_id is not None and edited_id in df['id'].values:
+            
+            # 1. Cargar la fila a editar
+            edit_row = df[df['id'] == edited_id].iloc[0]
+            
+            # 2. 🚨 CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO 🚨
+            # Esto se hace aquí para asegurar que los valores del registro se cargan 
+            # justo antes de que Streamlit dibuje los widgets
+            
+            # Asignar valores de la fila a las claves de sesión (solo si el valor es diferente o la clave no existe)
+            # Esto es para evitar que los callbacks que fuerzan el rerun sobrescriban los inputs
+            current_paciente = st.session_state.get('edit_paciente', None)
+            if current_paciente is None or current_paciente != edit_row['Paciente']:
+                 st.session_state.edit_paciente = edit_row['Paciente']
+                 
+            # Asignaciones para los números y fechas (el resto se inicializa al inicio del script)
             st.session_state.edit_valor_bruto = edit_row['Valor Bruto']
             st.session_state.edit_desc_adic = edit_row['Desc. Adicional']
             st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
             st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
             st.session_state.edit_fecha = edit_row['Fecha'].date()
-
-
             
-            # 💡 MOSTRAMOS EL CUADRO DE EDICIÓN DIRECTAMENTE
-            st.markdown(f"## ✏️ Editando Registro ID: {edit_index_input} ({edit_row['Paciente']})")
-            st.markdown("---")
-
-            # Tres columnas para el diseño de edición mejorado
-            col_e1, col_e2, col_e3 = st.columns([1, 1, 1.2]) 
+            # Se asigna Lugar, Ítem y Método Pago (sin chequear la existencia para asegurar que el selectbox se inicialice con el valor correcto)
+            st.session_state.edit_lugar = edit_row['Lugar']
+            st.session_state.edit_item = edit_row['Ítem']
+            st.session_state.edit_metodo = edit_row['Método Pago']
             
-            # =============================================================
-            # COLUMNA 1: DATOS CLAVE
-            # =============================================================
-            with col_e1:
-                st.subheader("Datos Clave")
-                
-                # FECHA (st.date_input)
-                fecha_val = st.session_state.edit_fecha # Usar el valor ya cargado
-                st.date_input("🗓️ Fecha de Atención", fecha_val, key="edit_fecha", on_change=update_edit_tributo)
-                
-                # LUGAR (st.selectbox)
-                try:
-                    lugar_idx = LUGARES.index(st.session_state.edit_lugar)
-                except ValueError:
-                    lugar_idx = 0
-                st.selectbox("📍 Lugar", options=LUGARES, key="edit_lugar", index=lugar_idx, on_change=update_edit_price)
-
-                # ÍTEM (st.selectbox)
-                items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar, {}).keys())
-                try:
-                     item_val = st.session_state.edit_item
-                     item_idx = items_edit_list.index(item_val) if item_val in items_edit_list else 0
-                except (ValueError, KeyError):
-                    item_idx = 0
-                st.selectbox("📋 Ítem", options=items_edit_list, key="edit_item", index=item_idx, on_change=update_edit_price)
-                
-                # PACIENTE (st.text_input)
-                st.text_input("👤 Paciente", st.session_state.edit_paciente, key="edit_paciente")
-                
-                # MÉTODO DE PAGO (st.selectbox)
-                try:
-                    metodo_idx = METODOS_PAGO.index(st.session_state.edit_metodo)
-                except ValueError:
-                    metodo_idx = 0
-                st.selectbox("💳 Método Pago", options=METODOS_PAGO, key="edit_metodo", index=metodo_idx)
-
             
-            # =============================================================
-            # COLUMNA 2: VALORES ECONÓMICOS EDITABLES/RECALCULABLES
-            # =============================================================
-            with col_e2:
-                st.subheader("Ajustes Financieros")
+            # 3. Dibujar el formulario
+            st.markdown(f"## ✏️ Editando Registro ID: {edited_id} ({edit_row['Paciente']})")
+            
+            # Usamos un `st.form` para asegurar que los botones de guardado no activen un re-run completo
+            with st.form(key=f"edit_form_{edited_id}"):
                 
-                # VALOR BRUTO
-                st.number_input(
-                    "💰 Valor Bruto (Recompensa)", 
-                    min_value=0, 
-                    step=1000, 
-                    key="edit_valor_bruto",
-                    on_change=force_recalculate 
-                )
-                st.button("🔄 Actualizar a Precio Base Sugerido", key='btn_update_price', on_click=update_edit_bruto_price, use_container_width=True)
+                col_e1, col_e2, col_e3 = st.columns([1, 1, 1.2]) 
+                
+                # =============================================================
+                # COLUMNA 1: DATOS CLAVE
+                # =============================================================
+                with col_e1:
+                    st.subheader("Datos Clave")
+                    
+                    # FECHA (st.date_input)
+                    st.date_input("🗓️ Fecha de Atención", st.session_state.edit_fecha, key="edit_fecha", on_change=update_edit_tributo)
+                    
+                    # LUGAR (st.selectbox)
+                    try:
+                        lugar_idx = LUGARES.index(st.session_state.edit_lugar)
+                    except ValueError:
+                        lugar_idx = 0
+                    st.selectbox("📍 Lugar", options=LUGARES, key="edit_lugar", index=lugar_idx, on_change=update_edit_price)
 
+                    # ÍTEM (st.selectbox)
+                    items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar, {}).keys())
+                    try:
+                         item_idx = items_edit_list.index(st.session_state.edit_item) if st.session_state.edit_item in items_edit_list else 0
+                    except (ValueError, KeyError):
+                        item_idx = 0
+                    st.selectbox("📋 Ítem", options=items_edit_list, key="edit_item", index=item_idx, on_change=update_edit_price)
+                    
+                    # PACIENTE (st.text_input)
+                    st.text_input("👤 Paciente", key="edit_paciente")
+                    
+                    # MÉTODO DE PAGO (st.selectbox)
+                    try:
+                        metodo_idx = METODOS_PAGO.index(st.session_state.edit_metodo)
+                    except ValueError:
+                        metodo_idx = 0
+                    st.selectbox("💳 Método Pago", options=METODOS_PAGO, key="edit_metodo", index=metodo_idx, on_change=update_edit_desc_tarjeta)
+
+                
+                # =============================================================
+                # COLUMNA 2: VALORES ECONÓMICOS EDITABLES/RECALCULABLES
+                # =============================================================
+                with col_e2:
+                    st.subheader("Ajustes Financieros")
+                    
+                    # VALOR BRUTO
+                    st.number_input(
+                        "💰 Valor Bruto (Recompensa)", 
+                        min_value=0, 
+                        step=1000, 
+                        key="edit_valor_bruto",
+                        on_change=force_recalculate 
+                    )
+                    st.form_submit_button("🔄 Actualizar a Precio Base Sugerido", key='btn_update_price_form', on_click=update_edit_bruto_price, use_container_width=True)
+
+                    st.markdown("---")
+
+                    # DESCUENTO ADICIONAL (Editable)
+                    st.number_input(
+                        "✂️ Ajuste Extra (Desc. Adic.)", 
+                        min_value=-500000, 
+                        step=1000, 
+                        key="edit_desc_adic",
+                        on_change=force_recalculate
+                    )
+                    
+                    st.markdown("---")
+                    
+                    # Botones de Recálculo de Tributo y Tarjeta
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        st.form_submit_button("🔄 Recalcular Tributo/Regla", key='btn_update_tributo_form', on_click=update_edit_tributo, use_container_width=True)
+                    with col_btn2:
+                        st.form_submit_button("🔄 Recalcular Tarjeta", key='btn_update_tarjeta_form', on_click=update_edit_desc_tarjeta, use_container_width=True)
+
+
+                # =============================================================
+                # COLUMNA 3: CÁLCULOS Y TOTALES EN VIVO
+                # =============================================================
+                with col_e3:
+                    st.subheader("Estado Actual (No Editable)")
+                    
+                    # Usamos los valores originales/recalculados (de los callbacks)
+                    current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Fijo Lugar'])
+                    current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta'])
+                    
+                    # Calcular el total líquido temporal (Vista Previa)
+                    total_liquido_live = (
+                        st.session_state.edit_valor_bruto
+                        - current_desc_fijo
+                        - current_desc_tarjeta
+                        - st.session_state.edit_desc_adic
+                    )
+                    
+                    # Mostrar las métricas de descuento actuales
+                    st.metric("❌ Desc. Fijo/Tributo", format_currency(current_desc_fijo))
+                    st.metric("💳 Desc. Tarjeta", format_currency(current_desc_tarjeta))
+                    st.metric("✂️ Desc. Adicional", format_currency(st.session_state.edit_desc_adic))
+                    
+                    st.markdown("---")
+                    
+                    st.success(f"### 💎 Tesoro Líquido (Vista Previa): {format_currency(total_liquido_live)}")
+                    st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
+
+
+                # --- Botones de Control Final ---
                 st.markdown("---")
-
-                # DESCUENTO ADICIONAL (Editable)
-                st.number_input(
-                    "✂️ Ajuste Extra (Desc. Adic.)", 
-                    min_value=-500000, 
-                    step=1000, 
-                    key="edit_desc_adic",
-                    on_change=force_recalculate
-                )
+                col_final1, col_final2, col_final3 = st.columns([0.6, 0.2, 0.2])
                 
-                st.markdown("---")
-                
-                # Botones de Recálculo de Tributo y Tarjeta
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    st.button("🔄 Recalcular Tributo/Regla", key='btn_update_tributo', on_click=update_edit_tributo, use_container_width=True)
-                with col_btn2:
-                    st.button("🔄 Recalcular Tarjeta", key='btn_update_tarjeta', on_click=update_edit_desc_tarjeta, use_container_width=True)
-
-
-            # =============================================================
-            # COLUMNA 3: CÁLCULOS Y TOTALES EN VIVO
-            # =============================================================
-            with col_e3:
-                st.subheader("Estado Actual (No Editable)")
-                
-                # Usamos los valores originales/recalculados (de los callbacks)
-                current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Fijo Lugar'])
-                current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta'])
-                
-                # Calcular el total líquido temporal (Vista Previa)
-                total_liquido_live = (
-                    st.session_state.edit_valor_bruto
-                    - current_desc_fijo
-                    - current_desc_tarjeta
-                    - st.session_state.edit_desc_adic
-                )
-                
-                # Mostrar las métricas de descuento actuales
-                st.metric("❌ Desc. Fijo/Tributo", format_currency(current_desc_fijo))
-                st.metric("💳 Desc. Tarjeta", format_currency(current_desc_tarjeta))
-                st.metric("✂️ Desc. Adicional", format_currency(st.session_state.edit_desc_adic))
-                
-                st.markdown("---")
-                
-                st.success(f"### 💎 Tesoro Líquido (Vista Previa): {format_currency(total_liquido_live)}")
-                st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
-
-
-            # --- Botones de Control Final ---
-            st.markdown("---")
-            col_final1, col_final2 = st.columns([0.7, 0.3])
-            
-            with col_final1:
                 # Botón de Guardado general
-                if st.button("💾 Aplicar y Cerrar Edición", type="primary"):
-                    new_total = save_edit_state_to_df()
-                    st.success(f"Registro ID {edit_index_input} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
-                    _cleanup_edit_state()
-                    st.session_state.rerun_after_edit = True 
+                with col_final1:
+                    if st.form_submit_button("💾 Aplicar Cambios y Cerrar Edición", type="primary"):
+                        new_total = save_edit_state_to_df()
+                        st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
+                        _cleanup_edit_state()
+                        st.session_state.rerun_after_edit = True 
 
-            with col_final2:
                 # Botón de Cierre Manual
-                st.button("❌ Cerrar Edición", key='btn_close_edit', on_click=_cleanup_edit_state, use_container_width=True)
+                with col_final2:
+                    st.form_submit_button("❌ Cerrar Edición", key='btn_close_edit_form', on_click=_cleanup_edit_state)
+                    
+                # Botón de Eliminar
+                with col_final3:
+                    if st.form_submit_button("🗑️ Eliminar", type="danger", help="Elimina permanentemente este registro."):
+                        delete_record_callback(edited_id)
         
-        # Mensajes de error si el ID es inválido o no existe.
-        elif edit_index_input > 1 and df['id'].max() > 0 and edit_index_input > df['id'].max():
-            st.warning("El ID ingresado es mayor que el ID máximo registrado.")
-        elif edit_index_input != 1: # Solo mostramos el mensaje si no es el valor por defecto (1) y no se encontró
-             st.info("Ingresa el ID del registro que deseas editar/revisar.")
-
-
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
