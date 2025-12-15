@@ -4,3 +4,5 @@ plotly
 psycopg2-binary
 sqlalchemy
 supabase==1.5.1
+supabase-py
+python-dateutil
