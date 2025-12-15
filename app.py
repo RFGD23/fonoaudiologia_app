@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import json 
-import time # <--- IMPORTACIÓN AÑADIDA
+import time 
 import plotly.express as px
 import numpy as np 
 import sqlite3 
@@ -11,6 +11,7 @@ from dateutil.parser import parse
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
+# (Mantenido igual)
 # ===============================================
 
 DB_FILE = 'tesoro_datos.db'
@@ -30,10 +31,7 @@ def save_config(data, filename):
         st.error(f"Error al guardar el archivo {filename}: {e}")
 
 def load_config(filename):
-    """
-    Carga la configuración desde un archivo JSON, creando el archivo si no existe 
-    y manejando la carga de datos maestros para la interfaz.
-    """
+    """Carga la configuración desde un archivo JSON, creando el archivo si no existe."""
     try:
         if not os.path.exists(filename):
             raise FileNotFoundError
@@ -109,6 +107,7 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 
 # ===============================================
 # 2. FUNCIONES DE PERSISTENCIA (SQLite)
+# (Mantenido igual)
 # ===============================================
 
 def get_db_connection():
@@ -190,7 +189,6 @@ def update_existing_record(record_dict):
 def delete_record(record_id):
     """
     Elimina un registro de la base de datos por ID. 
-    (Mantenida para completitud del backend)
     """
     conn = get_db_connection()
     query = "DELETE FROM atenciones WHERE id = ?"
@@ -207,6 +205,7 @@ def delete_record(record_id):
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
+# (Mantenido igual)
 # ===============================================
 
 def format_currency(value):
@@ -279,6 +278,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 
 # ===============================================
 # 4. FUNCIONES DE CALLBACKS Y UTILIDADES
+# (Mantenido igual)
 # ===============================================
 
 def update_price_from_item_or_lugar():
@@ -346,8 +346,8 @@ def _cleanup_edit_state():
         if key in st.session_state: del st.session_state[key] 
         
     st.session_state.edited_record_id = None 
-    st.session_state.input_id_edit = None # Limpia el input de ID de edición también
-
+    st.session_state.input_id_edit = None 
+    st.session_state.input_id_delete = None # <--- LIMPIAR INPUT DE ELIMINACIÓN
 
 def save_edit_state_to_df():
     """
@@ -406,7 +406,7 @@ def save_edit_state_to_df():
     return 0 
 
 # =========================================================================
-# FUNCIONES DE CALLBACKS DE EDICIÓN
+# FUNCIONES DE CALLBACKS DE EDICIÓN (Mantenido igual)
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
@@ -485,6 +485,31 @@ def edit_record_callback(record_id):
         _cleanup_edit_state() 
         
     st.session_state.edited_record_id = record_id
+
+# -------------------------------------------------------------
+# NUEVO CALLBACK PARA LA ELIMINACIÓN
+# -------------------------------------------------------------
+def delete_record_callback(record_id):
+    """Callback para eliminar un registro y actualizar el estado."""
+    # 1. Si el registro a eliminar es el que se estaba editando, limpiar el estado de edición
+    if st.session_state.edited_record_id == record_id:
+        _cleanup_edit_state()
+        
+    # 2. Ejecutar la eliminación
+    if delete_record(record_id):
+        st.session_state.deletion_pending_cleanup = True # Indica que se necesita recarga
+        st.toast(f"🗑️ Registro ID {record_id} eliminado exitosamente.", icon="✅")
+    else:
+        st.toast(f"🚨 Error al eliminar el registro ID {record_id}.", icon="❌")
+
+    # 3. Borrar caché de datos y forzar recarga de sesión
+    load_data_from_db.clear() 
+    st.session_state.atenciones_df = load_data_from_db() 
+    st.session_state.input_id_delete = None # Limpiar el input de eliminación
+    
+    st.rerun() # Forzar el refresco de la interfaz
+
+
 
 def submit_and_reset():
     """Ejecuta la lógica de guardado del formulario de registro y luego resetea el formulario."""
@@ -620,6 +645,10 @@ if 'deletion_pending_cleanup' not in st.session_state:
 # Nuevo estado para el input de ID de edición
 if 'input_id_edit' not in st.session_state:
     st.session_state.input_id_edit = None 
+    
+# Nuevo estado para el input de ID de eliminación
+if 'input_id_delete' not in st.session_state:
+    st.session_state.input_id_delete = None 
 
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
@@ -649,7 +678,7 @@ tab_registro, tab_dashboard, tab_config = st.tabs(["📝 Registrar Aventura", "�
 
 with tab_registro:
     # =========================================================================
-    # FORMULARIO DE INGRESO (Mantenido igual)
+    # FORMULARIO DE INGRESO 
     # =========================================================================
     st.subheader("🎉 Nueva Aventura de Ingreso (Atención)")
     
@@ -664,7 +693,7 @@ with tab_registro:
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía.")
         
-    # --- Inicialización de Valores para Formulario (Mantenido igual) ---
+    # --- Inicialización de Valores para Formulario ---
     lugar_key_initial = LUGARES[0] if LUGARES else ''
     if 'form_lugar' not in st.session_state: st.session_state.form_lugar = lugar_key_initial
     
@@ -684,7 +713,7 @@ with tab_registro:
     if 'form_paciente' not in st.session_state: st.session_state.form_paciente = ""
 
 
-    # WIDGETS REACTIVOS - Diseño de Cabecera (Mantenido igual)
+    # WIDGETS REACTIVOS - Diseño de Cabecera 
     st.markdown("### 📝 Datos de la Aventura")
     col_cabecera_1, col_cabecera_2, col_cabecera_3, col_cabecera_4 = st.columns(4)
 
@@ -885,7 +914,7 @@ with tab_dashboard:
         st.plotly_chart(fig, use_container_width=True)
         
         
-        # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
+        # --- TABLA DE DATOS CRUDA Y EDICIÓN/ELIMINACIÓN ---
         st.subheader("Historial Completo de Aventuras (Registros)")
 
         edited_id = st.session_state.edited_record_id
@@ -1060,41 +1089,74 @@ with tab_dashboard:
 
             st.markdown("---")
 
-            # --- 2. SECCIÓN DE EDICIÓN POR ID ---
-            st.subheader("🔍 Editar Registro Específico (por ID)")
+            # --- 2. SECCIÓN DE EDICIÓN Y ELIMINACIÓN POR ID ---
+            st.subheader("🛠️ Mantenimiento de Registros (Edición y Eliminación)")
             
             min_id = df['ID'].min() if not df.empty else 1
             max_id = df['ID'].max() if not df.empty else 10000
 
-            col_input, col_button = st.columns([0.2, 0.8])
+            col_edit_input, col_edit_button, col_delete_input, col_delete_button = st.columns([0.15, 0.35, 0.15, 0.35])
             
-            with col_input:
+            # --- EDICIÓN ---
+            with col_edit_input:
                 id_to_edit = st.number_input(
                     "ID a editar:", 
                     min_value=min_id, 
                     max_value=max_id, 
                     step=1, 
                     value=int(min_id) if not df.empty else None, 
-                    key='input_id_edit'
+                    key='input_id_edit', 
+                    label_visibility="visible"
                 )
             
-            is_valid_id = id_to_edit is not None and id_to_edit in df['ID'].values
+            is_valid_id_edit = id_to_edit is not None and id_to_edit in df['ID'].values
             
-            with col_button:
-                st.markdown("<br>", unsafe_allow_html=True)
-                
+            with col_edit_button:
+                st.markdown("<br>", unsafe_allow_html=True) # Espacio para alinear el botón
                 if st.button(
                     "✏️ Iniciar Edición", 
                     key='btn_start_edit_single', 
                     type="primary",
-                    use_container_width=False, 
-                    disabled=not is_valid_id
+                    use_container_width=True, 
+                    disabled=not is_valid_id_edit
                 ):
                     edit_record_callback(id_to_edit)
                     st.rerun()
+            
+            # --- ELIMINACIÓN ---
+            with col_delete_input:
+                id_to_delete = st.number_input(
+                    "ID a eliminar:", 
+                    min_value=min_id, 
+                    max_value=max_id, 
+                    step=1, 
+                    value=int(min_id) if not df.empty else None, 
+                    key='input_id_delete',
+                    label_visibility="visible"
+                )
+            
+            is_valid_id_delete = id_to_delete is not None and id_to_delete in df['ID'].values
 
-            if id_to_edit is not None and not is_valid_id:
-                 st.error(f"El ID {int(id_to_edit)} no existe en los registros actuales. Por favor, verifica el ID en la tabla de arriba.")
+            with col_delete_button:
+                st.markdown("<br>", unsafe_allow_html=True) # Espacio para alinear el botón
+                
+                # Botón de eliminación con confirmación
+                if is_valid_id_delete:
+                    # Usamos un expander para la confirmación de la eliminación
+                    with st.expander(f"🗑️ Confirmar Eliminación del ID {id_to_delete}", expanded=False):
+                        if st.button(
+                            f"CONFIRMAR ELIMINACIÓN PERMANENTE del ID {id_to_delete}",
+                            key='btn_confirm_delete_single',
+                            type="danger",
+                            use_container_width=True
+                        ):
+                            delete_record_callback(id_to_delete)
+                            # Nota: El st.rerun() está dentro de delete_record_callback
+                elif id_to_delete is not None:
+                     st.error("ID no válido.")
+                     
+            if id_to_edit is not None and not is_valid_id_edit and st.session_state.edited_record_id is None:
+                 st.info(f"El ID {int(id_to_edit)} no existe para editar.")
 
             st.markdown("---") 
 
@@ -1102,7 +1164,7 @@ with tab_dashboard:
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
-# --- Bloque de Configuración ---
+# --- Bloque de Configuración (Mantenido igual con las pausas) ---
 with tab_config:
     st.header("⚙️ Configuración Maestra")
     st.info("⚠️ Los cambios aquí modifican el cálculo para **TODAS** las nuevas entradas y se guardan inmediatamente.")
@@ -1145,7 +1207,7 @@ with tab_config:
                     
             save_config(new_precios_config, PRECIOS_FILE)
             re_load_global_config() 
-            time.sleep(0.1) # <-- PAUSA AÑADIDA
+            time.sleep(0.1) 
             st.success("Configuración de Precios Guardada y Recargada.")
             st.rerun()
 
@@ -1176,7 +1238,7 @@ with tab_config:
                     
             save_config(new_descuentos_config, DESCUENTOS_FILE)
             re_load_global_config()
-            time.sleep(0.1) # <-- PAUSA AÑADIDA
+            time.sleep(0.1) 
             st.success("Configuración de Tributo Base Guardada y Recargada.")
             st.rerun()
             
@@ -1219,7 +1281,7 @@ with tab_config:
                         
                 save_config(new_reglas_config, REGLAS_FILE)
                 re_load_global_config()
-                time.sleep(0.1) # <-- PAUSA AÑADIDA
+                time.sleep(0.1) 
                 st.success("Configuración de Reglas Diarias Guardada y Recargada.")
                 st.rerun()
 
@@ -1250,6 +1312,6 @@ with tab_config:
                     
             save_config(new_comisiones_config, COMISIONES_FILE)
             re_load_global_config()
-            time.sleep(0.1) # <-- PAUSA AÑADIDA
+            time.sleep(0.1) 
             st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
