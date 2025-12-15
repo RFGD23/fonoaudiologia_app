@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st
 import pandas as pd
 from datetime import date
 import os
@@ -241,7 +241,7 @@ def update_edit_price():
     st.session_state.edit_valor_bruto = int(precio_base_sugerido_edit)
 
 # --------------------------------------------------------------------------
-# --- NUEVA FUNCIÓN DE GUARDADO PARA EL MODO EDICIÓN (CLAVE DE LA SOLUCIÓN) ---
+# --- NUEVAS FUNCIONES DE GUARDADO Y LIMPIEZA PARA EL MODO EDICIÓN ---
 
 def save_edit_state_to_df():
     """
@@ -289,29 +289,40 @@ def save_edit_state_to_df():
     
     return total_liquido_final
 
+def _cleanup_edit_state():
+    """Limpia las claves de sesión relacionadas con el modo de edición para forzar el cierre del expander."""
+    st.session_state.edit_index = None
+    st.session_state.edited_lugar_state = None
+    if 'original_desc_fijo_lugar' in st.session_state: 
+        del st.session_state.original_desc_fijo_lugar
+    if 'original_desc_tarjeta' in st.session_state: 
+        del st.session_state.original_desc_tarjeta
+
 # --------------------------------------------------------------------------
 
 
-# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (SOLUCIÓN AL ERROR) ---
+# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO) ---
 
 def update_edit_bruto_price():
-    """Callback: Actualiza el Valor Bruto de la edición con el precio base actual, **guarda automáticamente** y notifica."""
+    """Callback: Actualiza el Valor Bruto, guarda, notifica Y CIERRA."""
     lugar_edit = st.session_state.edit_lugar.upper()
     item_edit = st.session_state.edit_item
     
-    # 1. Obtener el nuevo precio base
+    # 1. Obtener y actualizar el nuevo precio base
     nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, st.session_state.edit_valor_bruto)
-    
-    # 2. Actualizar el estado de sesión asociado al number_input
     st.session_state.edit_valor_bruto = int(nuevo_precio_base)
     
-    # 3. Guardar en DF/CSV y obtener el nuevo total
+    # 2. Guardar en DF/CSV y obtener el nuevo total
     new_total = save_edit_state_to_df()
     
     st.success(f"Valor Bruto actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
+    
+    # 3. CIERRE FORZADO
+    _cleanup_edit_state()
+    st.rerun() 
 
 def update_edit_desc_tarjeta():
-    """Callback: Recalcula y actualiza el Desc. Tarjeta, **guarda automáticamente** y notifica."""
+    """Callback: Recalcula y actualiza el Desc. Tarjeta, guarda, notifica Y CIERRA."""
     comision_pct_actual = COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)
     valor_bruto_actual = st.session_state.edit_valor_bruto
     nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
@@ -323,9 +334,13 @@ def update_edit_desc_tarjeta():
     new_total = save_edit_state_to_df()
     
     st.success(f"Desc. Tarjeta actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
+    
+    # 3. CIERRE FORZADO
+    _cleanup_edit_state()
+    st.rerun() 
 
 def update_edit_tributo():
-    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar), **guarda automáticamente** y notifica."""
+    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar), guarda, notifica Y CIERRA."""
     current_lugar_upper = st.session_state.edit_lugar 
     
     try:
@@ -350,6 +365,10 @@ def update_edit_tributo():
     new_total = save_edit_state_to_df()
     
     st.success(f"Tributo actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
+    
+    # 3. CIERRE FORZADO
+    _cleanup_edit_state()
+    st.rerun() 
 
 # --- Fin de Funciones de Callback para Botones de Edición ---
 
@@ -985,8 +1004,7 @@ with tab_dashboard:
                 
         except KeyError:
             st.error("Error: El índice de la fila a editar no fue encontrado.")
-            st.session_state.edit_index = None
-            st.session_state.edited_lugar_state = None
+            _cleanup_edit_state()
             st.rerun()
 
         if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
@@ -1067,7 +1085,7 @@ with tab_dashboard:
                         on_change=force_recalculate 
                     )
                 
-                # --- BOTÓN DE RECALCULAR VALOR BRUTO (Ahora guarda automáticamente) ---
+                # --- BOTÓN DE RECALCULAR VALOR BRUTO (Ahora guarda automáticamente y cierra) ---
                 with col_vb_btn:
                     st.button(
                         "🔄 Actualizar Base", 
@@ -1098,7 +1116,7 @@ with tab_dashboard:
                 st.markdown("---") 
                 st.markdown("### 🛠️ Recalcular Reducciones")
 
-                # --- DESCUENTO TARJETA Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente) ---
+                # --- DESCUENTO TARJETA Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente y cierra) ---
                 col_tarjeta_text, col_tarjeta_btn = st.columns([0.65, 0.35])
                 
                 with col_tarjeta_text:
@@ -1113,7 +1131,7 @@ with tab_dashboard:
                         on_click=update_edit_desc_tarjeta
                     )
 
-                # --- TRIBUTO Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente) ---
+                # --- TRIBUTO Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente y cierra) ---
                 col_tributo_text, col_tributo_btn = st.columns([0.65, 0.35])
                 
                 # LÓGICA DE ETIQUETADO DEL TRIBUTO EN EDICIÓN
@@ -1162,24 +1180,15 @@ with tab_dashboard:
             # EL BOTÓN "GUARDAR EDICIÓN" AHORA SOLO CIERRA EL EXPANDER Y LIMPIA EL ESTADO
             if col_actions[0].button("💾 Guardar Edición", use_container_width=True, type="primary", key="save_edit"):
                 
-                st.session_state.edit_index = None
-                st.session_state.edited_lugar_state = None
-                
-                # Limpiar estados de recalculo
-                if 'original_desc_fijo_lugar' in st.session_state: del st.session_state.original_desc_fijo_lugar
-                if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
-                
+                # Limpieza y Cierre (La persistencia ya ocurrió con los botones de actualización)
+                _cleanup_edit_state()
                 st.success("✅ Aventura editada y tesoro recalculado.") 
                 st.rerun()
 
             if col_actions[1].button("❌ Cancelar Edición", use_container_width=True, key="cancel_edit"):
-                st.session_state.edit_index = None
-                st.session_state.edited_lugar_state = None
                 
-                # Limpiar estados de recalculo
-                if 'original_desc_fijo_lugar' in st.session_state: del st.session_state.original_desc_fijo_lugar
-                if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
-                
+                # Limpieza y Cierre (Descartando cualquier edición no guardada por los botones de actualización)
+                _cleanup_edit_state()
                 st.rerun()
                 
 with tab_config:
