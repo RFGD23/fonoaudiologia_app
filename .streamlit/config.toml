@@ -1,0 +1,18 @@
+[theme]
+# Puedes elegir "Dark" o "Light". Aquí forzamos el modo oscuro.
+base = "dark" 
+
+# Color principal de los elementos (botones, enlaces, etc.)
+primaryColor = "#0083B8" 
+
+# Color de fondo de la aplicación
+backgroundColor = "#0E1117" 
+
+# Color de fondo de los bloques de contenido (ej. sidebar)
+secondaryBackgroundColor = "#262730" 
+
+# Color principal del texto
+textColor = "#FAFAFA" 
+
+# Fuente (opcional: puedes usar serif, monospace, o una fuente específica)
+# font = "sans serif"
