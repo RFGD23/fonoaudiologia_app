@@ -301,7 +301,7 @@ def _cleanup_edit_state():
 # --------------------------------------------------------------------------
 
 
-# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO) ---
+# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO Y time.sleep) ---
 
 def update_edit_bruto_price():
     """Callback: Actualiza el Valor Bruto, guarda, notifica Y CIERRA."""
@@ -317,8 +317,9 @@ def update_edit_bruto_price():
     
     st.success(f"Valor Bruto actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
     
-    # 3. CIERRE FORZADO
+    # 3. CIERRE FORZADO CON PAUSA
     _cleanup_edit_state()
+    time.sleep(0.5) # Pausa para evitar el warning 'no-op'
     st.rerun() 
 
 def update_edit_desc_tarjeta():
@@ -335,8 +336,9 @@ def update_edit_desc_tarjeta():
     
     st.success(f"Desc. Tarjeta actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
     
-    # 3. CIERRE FORZADO
+    # 3. CIERRE FORZADO CON PAUSA
     _cleanup_edit_state()
+    time.sleep(0.5) # Pausa para evitar el warning 'no-op'
     st.rerun() 
 
 def update_edit_tributo():
@@ -366,8 +368,9 @@ def update_edit_tributo():
     
     st.success(f"Tributo actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
     
-    # 3. CIERRE FORZADO
+    # 3. CIERRE FORZADO CON PAUSA
     _cleanup_edit_state()
+    time.sleep(0.5) # Pausa para evitar el warning 'no-op'
     st.rerun() 
 
 # --- Fin de Funciones de Callback para Botones de Edición ---
