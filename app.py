@@ -272,14 +272,14 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 
     # 3. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
-    desc_tarjeta = int((valor_bruto - desc_adicional_manual) * comision_pct)
+    desc_tarjeta = int(valor_bruto * comision_pct)
     
     # 4. Cálculo final
     total_recibido = (
         valor_bruto 
         - desc_fijo_lugar 
         - desc_tarjeta 
-        - desc_adicional_manual
+        - desc_adicional_manual 
     )
     
     return {
@@ -420,35 +420,27 @@ def save_edit_state_to_df():
 # FUNCIONES DE CALLBACKS DE EDICIÓN
 # =========================================================================
 
-def update_edit_desc_tarjeta(edited_id):
-    """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
-    metodo_pago_actual = st.session_state[f'edit_metodo_{edited_id}']
-    valor_bruto_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
+def update_edit_bruto_price(edited_id):
+    """Callback: Actualiza el Valor Bruto al precio base sugerido (y guarda)."""
+    lugar_edit = st.session_state[f'edit_lugar_{edited_id}'].upper()
+    item_edit = st.session_state[f'edit_item_{edited_id}']
     
-    # 💡 CORRECCIÓN: Obtener desc_adicional_manual del session_state
-    try:
-        desc_adicional_manual_edit = int(st.session_state[f'edit_desc_adic_{edited_id}'])
-    except Exception:
-        desc_adicional_manual_edit = 0
-
-    comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
-    # Usar la variable corregida
-    nuevo_desc_tarjeta = int((valor_bruto_actual - desc_adicional_manual_edit) * comision_pct_actual)
+    precio_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
+    nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, precio_actual)
     
-    # 1. Actualizar el valor en el estado de sesión (se guarda en 'original_desc_tarjeta')
-    st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
+    # 1. Actualizar el widget de la sesión
+    st.session_state[f'edit_valor_bruto_{edited_id}'] = int(nuevo_precio_base)
     
-    # 2. Guardar en la DB con el nuevo valor de descuento de tarjeta
-    # save_edit_state_to_df usa 'original_desc_tarjeta' y 'edit_desc_adic_{edited_id}'
+    # 2. Guardar en la DB con el nuevo valor
     new_total = save_edit_state_to_df() 
     
     if new_total > 0:
-        st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
-
+        st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
+        
     # 🚨 CORRECCIÓN DE ROBUSTEZ: Asegurar el ID antes de la recarga
     st.session_state.edited_record_id = edited_id 
     
-    st.rerun()
+    st.rerun() 
 
 def update_edit_desc_tarjeta(edited_id):
     """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
@@ -456,7 +448,7 @@ def update_edit_desc_tarjeta(edited_id):
     valor_bruto_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
     
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
-    nuevo_desc_tarjeta = int((valor_bruto_actual - desc_adicional_manual) * comision_pct_actual)
+    nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
     
     # 1. Actualizar el valor en el estado de sesión
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
