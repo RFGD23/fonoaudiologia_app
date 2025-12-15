@@ -6,6 +6,7 @@ import time
 import plotly.express as px
 import numpy as np 
 import sqlite3 
+import os # Importar os para manejo de archivos
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -31,6 +32,9 @@ def load_config(filename):
     y manejando la carga de datos maestros para la interfaz.
     """
     try:
+        if not os.path.exists(filename):
+            raise FileNotFoundError
+            
         with open(filename, 'r') as f:
             data = json.load(f)
             return data
@@ -43,7 +47,7 @@ def load_config(filename):
                 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 25000, '5 SABADOS': 30000, 'PACIENTE': 30000}
             }
         elif filename == DESCUENTOS_FILE:
-            default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000, 'CPM': 0} # CPM se deja en 0 para que la regla del 48.7% aplique
+            default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000, 'CPM': 0} 
         elif filename == COMISIONES_FILE:
             default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03}
         elif filename == REGLAS_FILE:
@@ -134,7 +138,6 @@ def get_db_connection():
 def load_data_from_db():
     """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID ASC (1, 2, 3...)**."""
     conn = get_db_connection()
-    # CORREGIDO: ORDENADO POR ID ASC para mostrar la secuencia correcta (1, 2, 3...)
     df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id ASC", conn) 
     conn.close()
     
@@ -389,7 +392,6 @@ def update_edit_bruto_price(edited_id):
     item_edit = st.session_state[f'edit_item_{edited_id}']
     
     # 1. Recalcular el precio sugerido
-    # En caso de error, mantenemos el valor bruto actual
     precio_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
     nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, precio_actual)
     st.session_state[f'edit_valor_bruto_{edited_id}'] = int(nuevo_precio_base)
@@ -431,7 +433,6 @@ def update_edit_tributo(edited_id):
         desc_fijo_calc = int(st.session_state[f'edit_valor_bruto_{edited_id}'] * 0.487)
     else:
         try:
-            # st.session_state[f'edit_fecha_{edited_id}'] es un objeto date/datetime (del date_input)
             current_day_name = DIAS_SEMANA[st.session_state[f'edit_fecha_{edited_id}'].weekday()]
         except Exception:
             current_day_name = "" 
@@ -453,15 +454,20 @@ def update_edit_tributo(edited_id):
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
+# 🚨 MODIFICACIÓN CRÍTICA DEL CALLBACK DE ELIMINACIÓN 🚨
 def delete_record_callback(record_id):
-    """Callback para eliminar un registro de la base de datos."""
+    """Callback para eliminar un registro de la base de datos. Establece un semáforo para el RERUN."""
     if delete_record(record_id):
+        # 1. Elimina el registro de la BD y recarga el DataFrame.
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
-        st.session_state.edited_record_id = None # REFORZAR LIMPIEZA
-        _cleanup_edit_state() # LLAMAR A LA FUNCIÓN DE LIMPIEZA DE CLAVES
-        st.success(f"Registro ID {record_id} eliminado exitosamente.")
-        st.rerun() # FORZAR RERUN DESPUÉS DE ELIMINAR
+        
+        # 2. Establece el semáforo para que la aplicación fuerce el RERUN.
+        st.session_state['deletion_pending_cleanup'] = True 
+        st.session_state.edited_record_id = None 
+        
+        st.success(f"Registro ID {record_id} eliminado exitosamente. Recargando la aplicación...")
+        # 🚨 NO LLAMAMOS A st.rerun() AQUÍ 🚨
     else:
         st.error(f"No se pudo eliminar el registro ID {record_id}.")
 
@@ -559,7 +565,7 @@ def set_dark_mode_theme():
     } 
     /* Estilo para los botones en las filas */
     .stButton > button {
-        background-color: #4CAF50; /* Green */
+        background-color: #4CAF50; 
         color: white;
         padding: 5px 10px;
         text-align: center;
@@ -611,9 +617,28 @@ if 'atenciones_df' not in st.session_state:
     
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
+    
+# 🚨 SEMÁFORO DE CONTROL DE RERUN 🚨
+if 'deletion_pending_cleanup' not in st.session_state:
+    st.session_state.deletion_pending_cleanup = False
+
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
+
+# 🚨 BLOQUE DE EJECUCIÓN DEL SEMÁFORO 🚨
+if st.session_state.deletion_pending_cleanup:
+    with st.spinner("Limpiando estado y recargando la aplicación..."):
+        # 1. Limpieza final de claves conflictivas
+        _cleanup_edit_state() 
+        
+        # 2. Desactivar el semáforo
+        st.session_state.deletion_pending_cleanup = False
+        
+        # 3. Forzar el rerun, ahora sí, de forma segura
+        st.rerun() 
+# ----------------------------------------
+
 
 # --- Herramientas de Mantenimiento ---
 if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondary"):
@@ -1053,13 +1078,12 @@ with tab_dashboard:
             with col_final2:
                 st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state)
                 
-            # 🚨 MODIFICACIÓN CRÍTICA: AISLAMIENTO DEL BOTÓN DE ELIMINAR EN UN FORMULARIO 🚨
+            # 🚨 AISLAMIENTO DEL BOTÓN DE ELIMINAR EN UN FORMULARIO 🚨
             with col_final3:
-                # Wrapper simple para el callback dentro del submit button
                 def delete_wrapper(record_id):
-                    delete_record_callback(record_id)
-                    # El callback ya llama a st.rerun()
-                    
+                    # Llama al callback modificado que establece el semáforo
+                    delete_record_callback(record_id) 
+
                 with st.form(key=f'delete_form_{edited_id}', clear_on_submit=False):
                     st.form_submit_button(
                         "🗑️ Eliminar", 
