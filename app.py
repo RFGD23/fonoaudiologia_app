@@ -348,7 +348,10 @@ def _cleanup_edit_state():
 
 
 def save_edit_state_to_df():
-    """Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos SQLite."""
+    """
+    Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos SQLite.
+    Retorna el Tesoro Líquido calculado.
+    """
     if st.session_state.edited_record_id is None:
         st.warning("Error: No hay un ID de registro para guardar la edición.")
         return 0
@@ -366,6 +369,7 @@ def save_edit_state_to_df():
     except:
         desc_adicional_final = 0
         
+    # Obtener los descuentos actualizados (o los originales si no se recalcularon)
     desc_fijo_final = int(st.session_state.get('original_desc_fijo_lugar', 0))
     desc_tarjeta_final = int(st.session_state.get('original_desc_tarjeta', 0))
     
@@ -391,11 +395,16 @@ def save_edit_state_to_df():
     }
     
     if update_existing_record(data_to_update): 
+        # Es crucial que la data se recargue después de guardar en la DB
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
         return total_liquido_final
     
     return 0 
+
+# =========================================================================
+# 🚨 MODIFICACIÓN: Eliminación de st.rerun() dentro de los Callbacks 🚨
+# =========================================================================
 
 def update_edit_bruto_price(edited_id):
     """Callback: Actualiza el Valor Bruto al precio base sugerido (y guarda)."""
@@ -404,12 +413,16 @@ def update_edit_bruto_price(edited_id):
     
     precio_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
     nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, precio_actual)
+    
+    # 1. Actualizar el widget de la sesión
     st.session_state[f'edit_valor_bruto_{edited_id}'] = int(nuevo_precio_base)
     
+    # 2. Guardar en la DB con el nuevo valor
     new_total = save_edit_state_to_df() 
+    
     if new_total > 0:
         st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
-        st.rerun() 
+        # ❌ ELIMINADO: st.rerun()
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
@@ -421,12 +434,15 @@ def update_edit_desc_tarjeta(edited_id):
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
     nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
     
+    # 1. Actualizar el valor en el estado de sesión
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
     
+    # 2. Guardar en la DB con el nuevo valor de descuento de tarjeta
     new_total = save_edit_state_to_df() 
+    
     if new_total > 0:
         st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
-        st.rerun() 
+        # ❌ ELIMINADO: st.rerun()
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
@@ -453,14 +469,21 @@ def update_edit_tributo(edited_id):
              except Exception:
                  pass
              
+    # 1. Actualizar el valor en el estado de sesión
     st.session_state.original_desc_fijo_lugar = desc_fijo_calc
     
+    # 2. Guardar en la DB con el nuevo valor de tributo
     new_total = save_edit_state_to_df() 
+    
     if new_total > 0:
         st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
-        st.rerun() 
+        # ❌ ELIMINADO: st.rerun()
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
+
+# =========================================================================
+# CONTINUACIÓN DEL CÓDIGO (Sin otros cambios)
+# =========================================================================
 
 def edit_record_callback(record_id):
     """Callback para establecer el ID a editar."""
@@ -830,7 +853,6 @@ with tab_dashboard:
         df_display['Fecha'] = df_display['Fecha'].astype(str)
         
         # --- MÉTRICAS Y GRÁFICOS (Implementación mantenida) ---
-        # Ahora que load_data_from_db fuerza el tipo, la suma es segura.
         total_ingreso = df['Tesoro Líquido'].sum() 
         total_atenciones = len(df)
         
@@ -1009,7 +1031,7 @@ with tab_dashboard:
 
 
         # =================================================================
-        # 🚨 NUEVA SECCIÓN DE BÚSQUEDA POR ID Y TABLA 🚨
+        # 🚨 SECCIÓN DE BÚSQUEDA POR ID Y TABLA 🚨
         # =================================================================
         else: 
             st.markdown("### 🗺️ Registros Detallados")
