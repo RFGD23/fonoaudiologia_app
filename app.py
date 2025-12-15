@@ -224,7 +224,7 @@ def update_existing_record(record_dict):
 def format_currency(value):
     """Función para formatear números como moneda en español con punto y coma."""
     if value is None or not isinstance(value, (int, float)):
-           value = 0
+          value = 0
     # Usamos la técnica de replace para simular el formato de miles con punto y decimal con coma (CLP)
     return f"${int(value):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
@@ -268,16 +268,11 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
                 if regla_especial is not None:
                     desc_fijo_lugar = regla_especial 
         except Exception:
-                 pass
+                pass
 
     # 3. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
-    # =================================================================================
-    # CAMBIO SOLICITADO: Descuento Tarjeta = (Valor Bruto - Desc. Adicional) * Comisión
-    # =================================================================================
-    base_para_comision = valor_bruto - desc_adicional_manual 
-    desc_tarjeta = int(base_para_comision * comision_pct)
-    # =================================================================================
+    desc_tarjeta = int(valor_bruto * comision_pct)
     
     # 4. Cálculo final
     total_recibido = (
@@ -312,7 +307,7 @@ def update_price_from_item_or_lugar():
         return
         
     if current_item not in items_disponibles:
-        st.session_state.form_item = items_filtrados_current[0]
+        st.session_state.form_item = items_disponibles[0]
         item_calc_for_price = items_disponibles[0]
     else:
         item_calc_for_price = current_item
@@ -451,12 +446,9 @@ def update_edit_desc_tarjeta(edited_id):
     """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
     metodo_pago_actual = st.session_state[f'edit_metodo_{edited_id}']
     valor_bruto_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
-    desc_adicional_actual = st.session_state[f'edit_desc_adic_{edited_id}'] # Se usa para la nueva lógica
     
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
-    # Aplicando la nueva lógica: Valor Bruto - Desc. Adicional
-    base_para_comision = valor_bruto_actual - desc_adicional_actual
-    nuevo_desc_tarjeta = int(base_para_comision * comision_pct_actual)
+    nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
     
     # 1. Actualizar el valor en el estado de sesión
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
@@ -496,13 +488,13 @@ def update_edit_tributo(edited_id):
             current_day_name = "" 
         
         if current_lugar_upper in DESCUENTOS_REGLAS:
-              try: 
-                  regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
-                  if regla_especial_monto is not None:
-                      desc_fijo_calc = regla_especial_monto
-              except Exception:
-                  pass
-              
+             try: 
+                 regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                 if regla_especial_monto is not None:
+                     desc_fijo_calc = regla_especial_monto
+             except Exception:
+                 pass
+             
     # 1. Actualizar el valor en el estado de sesión
     st.session_state.original_desc_fijo_lugar = desc_fijo_calc
     
@@ -730,10 +722,10 @@ with tab_registro:
             lugar_index = 0
 
         st.selectbox("📍 Castillo/Lugar de Atención", 
-                      options=LUGARES, 
-                      key="form_lugar",
-                      index=lugar_index,
-                      on_change=update_price_from_item_or_lugar) 
+                     options=LUGARES, 
+                     key="form_lugar",
+                     index=lugar_index,
+                     on_change=update_price_from_item_or_lugar) 
     
     with col_cabecera_2:
         lugar_key_current = st.session_state.form_lugar 
@@ -746,10 +738,10 @@ with tab_registro:
             item_index = 0 
             
         st.selectbox("📋 Poción/Procedimiento", 
-                      options=items_filtrados_current, 
-                      key="form_item",
-                      index=item_index, 
-                      on_change=update_price_from_item_or_lugar) 
+                     options=items_filtrados_current, 
+                     key="form_item",
+                     index=item_index, 
+                     on_change=update_price_from_item_or_lugar) 
     
     with col_cabecera_3:
         st.number_input(
@@ -812,507 +804,509 @@ with tab_registro:
                 desc_adicional_calc = st.session_state.form_desc_adic_input 
                 valor_bruto_calc = st.session_state.form_valor_bruto
                 
-                resultados = calcular_ingreso( 
+                resultados = calcular_ingreso(
                     st.session_state.form_lugar, 
                     st.session_state.form_item, 
                     st.session_state.form_metodo_pago, 
-                    desc_adicional_calc, 
+                    desc_adicional_calc,
                     fecha_atencion=st.session_state.form_fecha, 
-                    valor_bruto_override=valor_bruto_calc
+                    valor_bruto_override=valor_bruto_calc 
                 )
-                
-                # ... (El resto del código del bloque 'else' y el `st.form` continúa aquí)
-                
-                st.metric("💸 Desc. Fijo (Tributo a la Hostería)", format_currency(resultados['desc_fijo_lugar']))
-                st.metric("💳 Desc. por Tarjeta (Comisión del Banco)", format_currency(resultados['desc_tarjeta']), 
-                          help="Calculado como (Valor Bruto - Polvo Mágico Extra) * Comisión %")
-                st.metric("✨ Total Neto a Recibir (El Tesoro)", format_currency(resultados['total_recibido']), delta=format_currency(resultados['total_recibido']))
-                
-                st.markdown("---")
-                st.form_submit_button("✅ Guardar Aventura (Registro)", type="primary", on_click=submit_and_reset)
-                
-    st.markdown("---")
-    st.markdown("### 📜 **Tabla de Ingresos Recientes**")
 
-    # Muestra la tabla de datos
-    if st.session_state.atenciones_df.empty:
-        st.info("Aún no hay aventuras registradas. ¡Hora de empezar!")
-    else:
-        df_display = st.session_state.atenciones_df.copy()
-        
-        # Ocultar la columna ID si no está en modo edición
-        if st.session_state.edited_record_id is None:
-            df_display = df_display.rename(columns={'id': 'ID'})
-            column_order = [
-                'Fecha', 'Lugar', 'Ítem', 'Paciente', 
-                'Método Pago', 'Valor Bruto', 'Desc. Fijo Lugar', 
-                'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido', 
-                'ID'
-            ]
-            df_display = df_display.reindex(columns=column_order)
-            
-            # Formatear las columnas de dinero como moneda
-            money_cols = ['Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido']
-            for col in money_cols:
-                df_display[col] = df_display[col].apply(format_currency)
-
-            # Mostrar la tabla, incluyendo un botón de acción en la tabla dinámica
-            def render_row(row):
-                cols = st.columns([1, 1, 1.5, 2, 1, 1.5, 1.5, 1.5, 1.5, 1.5, 0.5]) # Ajuste para las 11 columnas
+                st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago.upper(), 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
-                # Contenido de la fila
-                for i, col_name in enumerate(df_display.columns):
-                    if col_name == 'ID': continue # Se salta la ID para el botón
-                    cols[i].markdown(f"<div class='data-row'>{row[col_name]}</div>", unsafe_allow_html=True)
+                current_lugar_upper = st.session_state.form_lugar 
+                desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
-                # Botón de edición
-                with cols[-1]:
-                    # Usamos una función para envolver el callback del botón y capturar el ID
-                    def set_edit_mode(record_id):
-                        st.session_state.edited_record_id = record_id
-                        st.session_state.input_id_edit = record_id
-                        st.rerun() # Forzar rerun para mostrar el expander
-                        
-                    st.button("Editar", key=f"edit_btn_{row['ID']}", on_click=set_edit_mode, args=(row['ID'],))
-
-            # Renderizar el encabezado
-            header_cols = st.columns([1, 1, 1.5, 2, 1, 1.5, 1.5, 1.5, 1.5, 1.5, 0.5])
-            header_names = ['Fecha', 'Lugar', 'Ítem', 'Paciente', 'Método Pago', 'Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido', 'Acción']
-            for i, col_name in enumerate(header_names):
-                header_cols[i].markdown(f"<div class='row-header'>{col_name}</div>", unsafe_allow_html=True)
-
-            # Iterar y renderizar filas
-            df_recent = df_display.sort_values(by='ID', ascending=False).head(20) # Mostrar solo las 20 más recientes
-            for index, row in df_recent.iterrows():
-                render_row(row)
+                if current_lugar_upper.upper() == 'CPM':
+                    desc_lugar_label = f"Tributo al Castillo (CPM - 48.7% Bruto)"
+                else:
+                    try:
+                        current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()] 
+                        is_rule_applied = False
+                        if current_lugar_upper in DESCUENTOS_REGLAS:
+                            regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                            if regla_especial_monto is not None:
+                                desc_lugar_label += f" (Regla: {current_day_name})"
+                                is_rule_applied = True
+                        if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
+                            desc_lugar_label += " (Base)"
+                    except Exception:
+                        pass
                 
-            # --- Modal de Edición (Expander) ---
-            if st.session_state.edited_record_id is not None:
+                st.info(f"**{desc_lugar_label}:** {format_currency(resultados['desc_fijo_lugar'])}")
                 
-                record_id_to_edit = st.session_state.edited_record_id
-                
-                # Buscar el registro original en el DataFrame (sin formatear)
-                original_row = st.session_state.atenciones_df[st.session_state.atenciones_df['id'] == record_id_to_edit].iloc[0]
-                
-                # Inicializar los estados de sesión para la edición (si no existen o si se cambió el ID)
-                if st.session_state.get('input_id_edit') != record_id_to_edit:
-                    
-                    st.session_state[f'edit_lugar_{record_id_to_edit}'] = original_row['Lugar']
-                    st.session_state[f'edit_item_{record_id_to_edit}'] = original_row['Ítem']
-                    st.session_state[f'edit_valor_bruto_{record_id_to_edit}'] = original_row['Valor Bruto']
-                    st.session_state[f'edit_desc_adic_{record_id_to_edit}'] = original_row['Desc. Adicional']
-                    st.session_state[f'edit_fecha_{record_id_to_edit}'] = original_row['Fecha']
-                    st.session_state[f'edit_metodo_{record_id_to_edit}'] = original_row['Método Pago']
-                    st.session_state[f'edit_paciente_{record_id_to_edit}'] = original_row['Paciente']
-                    
-                    # Guardamos los descuentos calculados originalmente para mostrarlos/usarlos como base
-                    st.session_state['original_desc_fijo_lugar'] = original_row['Desc. Fijo Lugar']
-                    st.session_state['original_desc_tarjeta'] = original_row['Desc. Tarjeta']
-                    
-                    st.session_state.input_id_edit = record_id_to_edit
-                    
-                    # Forzar una recarga inicial para que todos los widgets tengan sus valores iniciales correctos
-                    st.rerun() 
-                    
-                
-                # Re-obtener los valores para asegurar la reactividad
-                lugar_edit_val = st.session_state.get(f'edit_lugar_{record_id_to_edit}')
-                item_edit_val = st.session_state.get(f'edit_item_{record_id_to_edit}')
-                valor_bruto_edit_val = st.session_state.get(f'edit_valor_bruto_{record_id_to_edit}')
-                desc_adic_edit_val = st.session_state.get(f'edit_desc_adic_{record_id_to_edit}')
-                fecha_edit_val = st.session_state.get(f'edit_fecha_{record_id_to_edit}')
-                metodo_edit_val = st.session_state.get(f'edit_metodo_{record_id_to_edit}')
-                paciente_edit_val = st.session_state.get(f'edit_paciente_{record_id_to_edit}')
-                
-                desc_fijo_current = st.session_state.get('original_desc_fijo_lugar', 0)
-                desc_tarjeta_current = st.session_state.get('original_desc_tarjeta', 0)
-                
-                
-                with st.expander(f"**🛠️ Editando Registro ID: {record_id_to_edit} - {paciente_edit_val}**", expanded=True):
-                    
-                    # --- Formulario de Edición ---
-                    with st.form(key=f"edit_form_{record_id_to_edit}"):
-                        
-                        col_e1, col_e2, col_e3, col_e4 = st.columns(4)
-                        
-                        with col_e1:
-                            lugar_edit_options = list(PRECIOS_BASE_CONFIG.keys())
-                            try:
-                                lugar_edit_idx = lugar_edit_options.index(lugar_edit_val)
-                            except:
-                                lugar_edit_idx = 0
+                st.markdown("###")
+                st.success(
+                    f"## 💎 Tesoro Total (Líquido): {format_currency(resultados['total_recibido'])}"
+                )
+    
+        st.markdown("---") 
 
-                            st.selectbox("📍 Lugar", 
-                                options=lugar_edit_options, 
-                                key=f'edit_lugar_{record_id_to_edit}', 
-                                index=lugar_edit_idx,
-                                on_change=update_edit_price, # Actualiza precio sugerido
-                                args=(record_id_to_edit,))
-
-                        with col_e2:
-                            current_items_edit = list(PRECIOS_BASE_CONFIG.get(lugar_edit_val.upper(), {}).keys())
-                            try:
-                                item_edit_idx = current_items_edit.index(item_edit_val)
-                            except:
-                                item_edit_idx = 0
-
-                            st.selectbox("📋 Ítem", 
-                                options=current_items_edit, 
-                                key=f'edit_item_{record_id_to_edit}', 
-                                index=item_edit_idx,
-                                on_change=update_edit_price, # Actualiza precio sugerido
-                                args=(record_id_to_edit,))
-
-                        with col_e3:
-                            st.number_input("💰 Valor Bruto", 
-                                min_value=0, 
-                                step=1000, 
-                                key=f'edit_valor_bruto_{record_id_to_edit}', 
-                                on_change=force_recalculate) # Fuerza el cálculo del total líquido
-
-                        with col_e4:
-                            st.number_input("✂️ Desc. Adicional", 
-                                step=1000,
-                                key=f'edit_desc_adic_{record_id_to_edit}',
-                                on_change=force_recalculate)
-                            
-                        # --- Fila 2: Fecha, Pago y Paciente ---
-                        col_f1, col_f2, col_f3 = st.columns(3)
-                        
-                        with col_f1:
-                            st.date_input("🗓️ Fecha", 
-                                value=fecha_edit_val,
-                                key=f'edit_fecha_{record_id_to_edit}',
-                                on_change=force_recalculate)
-                            
-                        with col_f2:
-                            pago_edit_options = METODOS_PAGO
-                            try:
-                                pago_edit_idx = pago_edit_options.index(metodo_edit_val)
-                            except:
-                                pago_edit_idx = 0
-                                
-                            st.selectbox("💳 Método de Pago", 
-                                options=pago_edit_options, 
-                                key=f'edit_metodo_{record_id_to_edit}',
-                                index=pago_edit_idx,
-                                on_change=force_recalculate)
-                            
-                        with col_f3:
-                            st.text_input("👤 Paciente", 
-                                value=paciente_edit_val,
-                                key=f'edit_paciente_{record_id_to_edit}')
-                            
-                        st.markdown("---")
-                        
-                        # --- Fila de Cálculos y Botones ---
-                        col_r1, col_r2, col_r3, col_r4 = st.columns([2, 2, 2, 4])
-                        
-                        # Calcular el total actual
-                        total_liquido_actual = (
-                            st.session_state[f'edit_valor_bruto_{record_id_to_edit}']
-                            - desc_fijo_current
-                            - desc_tarjeta_current
-                            - st.session_state[f'edit_desc_adic_{record_id_to_edit}']
-                        )
-                        
-                        with col_r1:
-                            st.metric("💸 Desc. Fijo (Tributo)", format_currency(desc_fijo_current))
-                            st.button("🔄 Recalcular Tributo", 
-                                key=f"btn_update_tributo_form_{record_id_to_edit}", 
-                                on_click=update_edit_tributo, 
-                                args=(record_id_to_edit,),
-                                help="Recalcula el tributo (Desc. Fijo) basado en el Lugar y la Fecha.")
-
-                        with col_r2:
-                            st.metric("💳 Desc. Tarjeta", format_currency(desc_tarjeta_current))
-                            st.button("🔄 Recalcular Tarjeta", 
-                                key=f"btn_update_tarjeta_form_{record_id_to_edit}", 
-                                on_click=update_edit_desc_tarjeta, 
-                                args=(record_id_to_edit,),
-                                help="Recalcula el descuento de tarjeta basado en el Valor Bruto, Desc. Adicional y Método de Pago.")
-                            
-                        with col_r3:
-                            st.metric("✨ **Total Líquido Final**", format_currency(total_liquido_actual))
-                            st.button("💰 Recalcular Total Bruto", 
-                                key=f"btn_update_price_form_{record_id_to_edit}", 
-                                on_click=update_edit_bruto_price, 
-                                args=(record_id_to_edit,),
-                                help="Establece el Valor Bruto al precio base sugerido del ítem/lugar.")
-                            
-                        with col_r4:
-                            st.markdown("---")
-                            col_save, col_close = st.columns(2)
-                            with col_save:
-                                # El submit button siempre se usa para la acción principal y guarda todos los campos
-                                if st.form_submit_button("💾 Guardar Cambios y Recalcular Total", type="primary", key=f"btn_save_edit_form_{record_id_to_edit}"):
-                                    final_total = save_edit_state_to_df()
-                                    st.toast(f"✅ ¡Registro {record_id_to_edit} Actualizado! Tesoro Líquido: {format_currency(final_total)}", icon="💾")
-                                    st.session_state.deletion_pending_cleanup = True # Para limpiar el expander
-                                    st.rerun() 
-                            with col_close:
-                                if st.button("❌ Cerrar Edición", key=f"btn_close_edit_form_{record_id_to_edit}"):
-                                    st.session_state.deletion_pending_cleanup = True 
-                                    st.rerun()
-
+        st.form_submit_button(
+            "✅ ¡Guardar Aventura y Tesoro!", 
+            width='stretch', 
+            type="primary",
+            on_click=submit_and_reset 
+        )
 
 with tab_dashboard:
-    # =========================================================================
-    # DASHBOARD
-    # =========================================================================
-    st.subheader("📊 Mapa del Tesoro (Dashboard de Ingresos)")
+    # ===============================================
+    # 6. DASHBOARD DE RESUMEN Y EDICIÓN
+    # ===============================================
+    st.header("✨ Mapa y Brújula de Ingresos (Dashboard)")
+
+    df = st.session_state.atenciones_df.copy()
     
-    df_data = st.session_state.atenciones_df.copy()
-    
-    if df_data.empty:
-        st.info("No hay datos para mostrar en el Mapa del Tesoro.")
+    if not df.empty:
+        # Renombrar columnas para la visualización
+        df = df.rename(columns={
+            'id': 'ID',
+            'Desc. Fijo Lugar': 'Desc. Tributo',
+            'Desc. Tarjeta': 'Desc. Tarjeta',
+            'Desc. Adicional': 'Desc. Ajuste',
+            'Total Recibido': 'Tesoro Líquido',
+        })
+        
+        columns_to_show = ['ID', 'Fecha', 'Lugar', 'Ítem', 'Paciente', 'Método Pago', 'Valor Bruto', 'Desc. Tributo', 'Desc. Ajuste', 'Tesoro Líquido']
+        df_display = df[columns_to_show]
+        
+        df_display['Fecha'] = df_display['Fecha'].astype(str)
+        
+        # --- MÉTRICAS Y GRÁFICOS (Implementación mantenida) ---
+        total_ingreso = df['Tesoro Líquido'].sum() 
+        total_atenciones = len(df)
+        
+        col_m1, col_m2 = st.columns(2)
+        
+        with col_m1:
+            st.metric("💰 Tesoro Líquido Total", format_currency(total_ingreso))
+        with col_m2:
+            st.metric("👥 Atenciones Registradas", total_atenciones)
+            
+        st.markdown("---")
+        
+        st.subheader("Gráficos de Distribución del Tesoro")
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            df_lugar = df.groupby('Lugar')['Tesoro Líquido'].sum().reset_index()
+            fig_lugar = px.pie(df_lugar, values='Tesoro Líquido', names='Lugar', title='Distribución por Castillo/Lugar', hole=.3)
+            st.plotly_chart(fig_lugar, width='stretch')
+
+        with col_g2:
+            df_item = df.groupby('Ítem')['Tesoro Líquido'].sum().reset_index().sort_values(by='Tesoro Líquido', ascending=False)
+            fig_item = px.bar(df_item.head(10), x='Ítem', y='Tesoro Líquido', title='Top 10 Pociones/Procedimientos (Ingreso Líquido)', labels={'Tesoro Líquido': 'Tesoro Líquido', 'Ítem': 'Ítem'})
+            st.plotly_chart(fig_item, width='stretch')
+
+        st.markdown("---")
+        
+        # 🟢 Gráfico Semanal (mantenido del paso anterior)
+        st.subheader("Tesoro Líquido Acumulado por Semana")
+        
+        df_temp = df.copy()
+        # Asegurarse de que 'Fecha' sea datetime para usar dt.to_period
+        df_temp['Fecha_dt'] = pd.to_datetime(df_temp['Fecha']) 
+        
+        # 1. Agrupar por periodo semanal ('W').
+        df_grouped_weekly = df_temp.groupby(df_temp['Fecha_dt'].dt.to_period('W')).agg(
+            {'Tesoro Líquido': 'sum'}
+        ).reset_index()
+        
+        # 2. Convertir el periodo semanal a una etiqueta legible (ej. "Semana 51 / 15-dic")
+        df_grouped_weekly['Semana'] = df_grouped_weekly['Fecha_dt'].apply(
+            lambda x: f"Semana {x.weekofyear} / {x.start_time.strftime('%d-%b')}"
+        ) 
+        
+        # 3. Crear el gráfico de líneas
+        fig = px.line(
+            df_grouped_weekly, 
+            x='Semana', # Usamos la nueva etiqueta categórica
+            y='Tesoro Líquido', 
+            title='Tesoro Líquido Acumulado por Semana', 
+            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Semana': 'Período Semanal (Fecha de Inicio)'}, 
+            line_shape='spline'
+        )
+        # Añadir marcadores para ver los puntos de datos individuales
+        fig.update_traces(mode='lines+markers') 
+        
+        # Opcional: Rotar etiquetas para mejor lectura
+        fig.update_layout(xaxis_tickangle=-45)
+        
+        st.plotly_chart(fig, width='stretch')
+        # 🟢 FIN DEL GRÁFICO
+        
+        
+        # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
+        st.subheader("Historial Completo de Aventuras (Registros)")
+
+        edited_id = st.session_state.edited_record_id
+        
+        # =================================================================
+        # LÓGICA DE AISLAMIENTO: O SE DIBUJA LA TABLA, O EL FORMULARIO
+        # =================================================================
+        
+        if edited_id is not None and edited_id in df['ID'].values: 
+            # -------------------------------------------------------------
+            # DIBUJAR FORMULARIO DE EDICIÓN 
+            # -------------------------------------------------------------
+            edit_row = df[df['ID'] == edited_id].iloc[0]
+            
+            # CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO (Mantenido)
+            if f'edit_paciente_{edited_id}' not in st.session_state:
+                 st.session_state[f'edit_paciente_{edited_id}'] = edit_row['Paciente']
+                 st.session_state[f'edit_valor_bruto_{edited_id}'] = edit_row['Valor Bruto']
+                 st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Ajuste']
+                 st.session_state.original_desc_fijo_lugar = edit_row['Desc. Tributo']
+                 st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
+                 # Usamos pd.to_datetime para asegurar que se puede convertir a date
+                 fecha_dt = pd.to_datetime(edit_row['Fecha'])
+                 st.session_state[f'edit_fecha_{edited_id}'] = fecha_dt.date() if pd.notna(fecha_dt) else date.today()
+                 st.session_state[f'edit_lugar_{edited_id}'] = edit_row['Lugar']
+                 st.session_state[f'edit_item_{edited_id}'] = edit_row['Ítem']
+                 st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
+            
+            
+            st.markdown(f"## ✏️ Editando Registro ID: {edited_id} ({st.session_state[f'edit_paciente_{edited_id}']})")
+            
+            col_e1, col_e2, col_e3 = st.columns([1, 1, 1.2]) 
+            
+            with col_e1:
+                st.subheader("Datos Clave")
+                fecha_display = st.session_state[f'edit_fecha_{edited_id}']
+                st.date_input("🗓️ Fecha de Atención", fecha_display, key=f"edit_fecha_{edited_id}")
+                
+                try:
+                    lugar_idx = LUGARES.index(st.session_state[f'edit_lugar_{edited_id}'])
+                except ValueError:
+                    lugar_idx = 0
+                st.selectbox("📍 Lugar", options=LUGARES, key=f"edit_lugar_{edited_id}", index=lugar_idx, on_change=update_edit_price, args=(edited_id,))
+
+                items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state[f'edit_lugar_{edited_id}'], {}).keys())
+                item_actual = st.session_state[f'edit_item_{edited_id}']
+                try:
+                     item_idx = items_edit_list.index(item_actual) if item_actual in items_edit_list else 0
+                except (ValueError, KeyError):
+                    item_idx = 0
+                st.selectbox("📋 Ítem", options=items_edit_list, key=f"edit_item_{edited_id}", index=item_idx, on_change=update_edit_price, args=(edited_id,))
+                
+                st.text_input("👤 Paciente", key=f"edit_paciente_{edited_id}")
+                
+                try:
+                    metodo_idx = METODOS_PAGO.index(st.session_state[f'edit_metodo_{edited_id}'])
+                except ValueError:
+                    metodo_idx = 0
+                st.selectbox("💳 Método Pago", options=METODOS_PAGO, key=f"edit_metodo_{edited_id}", index=metodo_idx, on_change=update_edit_desc_tarjeta, args=(edited_id,))
+
+            
+            with col_e2:
+                st.subheader("Ajustes Financieros")
+                st.number_input("💰 Valor Bruto (Recompensa)", min_value=0, step=1000, key=f"edit_valor_bruto_{edited_id}")
+                st.button("🔄 Actualizar a Precio Base Sugerido", key=f'btn_update_price_form_{edited_id}', on_click=update_edit_bruto_price, args=(edited_id,), width='stretch')
+
+                st.markdown("---")
+
+                st.number_input("✂️ Ajuste Extra (Desc. Adic.)", min_value=-500000, step=1000, key=f"edit_desc_adic_{edited_id}")
+                
+                st.markdown("---")
+                
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    st.button("🔄 Recalcular Tributo/Regla", key=f'btn_update_tributo_form_{edited_id}', on_click=update_edit_tributo, args=(edited_id,), width='stretch')
+                with col_btn2:
+                    st.button("🔄 Recalcular Tarjeta", key=f'btn_update_tarjeta_form_{edited_id}', on_click=update_edit_desc_tarjeta, args=(edited_id,), width='stretch')
+
+
+            with col_e3:
+                st.subheader("Estado Actual (No Editable)")
+                # Forzamos los valores a int para el cálculo de la vista previa
+                try:
+                    current_desc_fijo = int(st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Tributo']))
+                except:
+                    current_desc_fijo = 0
+                
+                try:
+                    current_desc_tarjeta = int(st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta']))
+                except:
+                    current_desc_tarjeta = 0
+                
+                try:
+                    current_valor_bruto = int(st.session_state[f'edit_valor_bruto_{edited_id}'])
+                except:
+                    current_valor_bruto = 0
+                    
+                try:
+                    current_desc_adicional = int(st.session_state[f'edit_desc_adic_{edited_id}'])
+                except:
+                    current_desc_adicional = 0
+                
+                total_liquido_live = (
+                    current_valor_bruto
+                    - current_desc_fijo
+                    - current_desc_tarjeta
+                    - current_desc_adicional
+                )
+                
+                st.metric("❌ Desc. Fijo/Tributo", format_currency(current_desc_fijo))
+                st.metric("💳 Desc. Tarjeta", format_currency(current_desc_tarjeta))
+                st.metric("✂️ Desc. Adicional", format_currency(current_desc_adicional))
+                
+                st.markdown("---")
+                
+                st.success(f"### 💎 Tesoro Líquido (Vista Previa): {format_currency(total_liquido_live)}")
+                st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Tesoro Líquido'])}")
+
+
+            # --- Botones de Control Final ---
+            st.markdown("---")
+            
+            col_final1, col_final2 = st.columns([0.8, 0.2])
+            
+            with col_final1:
+                if st.button(
+                    "💾 Aplicar Cambios y Cerrar Edición", 
+                    type="primary",
+                    key=f'btn_save_edit_form_{edited_id}', 
+                    width='stretch'
+                ):
+                    new_total = save_edit_state_to_df()
+                    st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
+                    _cleanup_edit_state() 
+                    st.rerun() 
+
+            with col_final2:
+                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, width='stretch')
+
+
+        # =================================================================
+        # SECCIÓN DE BÚSQUEDA POR ID Y TABLA
+        # =================================================================
+        else: 
+            st.markdown("### 🗺️ Registros Detallados")
+            
+            # --- 1. DIBUJAR LA TABLA DE DATOS (VISUALIZACIÓN) ---
+            df_display_no_actions = df_display.copy()
+
+            # Definición de columnas 
+            config_columns = {
+                'ID': st.column_config.NumberColumn(width='small', help="Identificador único del registro", disabled=True),
+                'Fecha': st.column_config.TextColumn(disabled=True),
+                'Lugar': st.column_config.TextColumn(disabled=True),
+                'Ítem': st.column_config.TextColumn(disabled=True),
+                'Paciente': st.column_config.TextColumn(disabled=True),
+                'Método Pago': st.column_config.TextColumn(disabled=True),
+                'Valor Bruto': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
+                'Desc. Tributo': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
+                'Desc. Ajuste': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
+                'Tesoro Líquido': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", help="Total final recibido después de descuentos y ajustes", disabled=True),
+            }
+            
+            st.data_editor(
+                df_display_no_actions,
+                column_config=config_columns,
+                hide_index=True,
+                width='stretch',
+                num_rows='fixed', 
+                key='ingresos_viewer'
+            )
+
+            st.markdown("---")
+
+            # --- 2. SECCIÓN DE EDICIÓN POR ID ---
+            st.subheader("🛠️ Mantenimiento de Registros (Solo Edición)")
+            
+            min_id = df['ID'].min() if not df.empty else 1
+            max_id = df['ID'].max() if not df.empty else 10000
+
+            col_edit_input, col_edit_button = st.columns([0.2, 0.8])
+            
+            # --- EDICIÓN ---
+            with col_edit_input:
+                id_to_edit = st.number_input(
+                    "ID a editar:", 
+                    min_value=min_id, 
+                    max_value=max_id, 
+                    step=1, 
+                    value=int(min_id) if not df.empty and st.session_state.input_id_edit is None else st.session_state.input_id_edit, 
+                    key='input_id_edit', 
+                    label_visibility="visible"
+                )
+            
+            is_valid_id_edit = id_to_edit is not None and id_to_edit in df['ID'].values
+            
+            with col_edit_button:
+                st.markdown("<br>", unsafe_allow_html=True) # Espacio para alinear el botón
+                if st.button(
+                    "✏️ Iniciar Edición", 
+                    key='btn_start_edit_single', 
+                    type="primary",
+                    width='stretch',
+                    disabled=not is_valid_id_edit
+                ):
+                    # <-- Lógica para asegurar la apertura
+                    if st.session_state.edited_record_id is not None:
+                        _cleanup_edit_state() 
+                    st.session_state.edited_record_id = id_to_edit
+                    st.rerun()
+            
+
+            if id_to_edit is not None and not is_valid_id_edit and st.session_state.edited_record_id is None:
+                 st.info(f"El ID {int(id_to_edit)} no existe para editar.")
+
+            st.markdown("---") 
+
+        
     else:
-        
-        # --- Cálculo de Métricas Clave ---
-        total_ingreso = df_data['Total Recibido'].sum()
-        total_atenciones = len(df_data)
-        
-        df_mes = df_data.copy()
-        df_mes['Mes'] = pd.to_datetime(df_mes['Fecha']).dt.to_period('M')
-        
-        # Filtro por Mes
-        meses_disponibles = sorted(df_mes['Mes'].unique(), reverse=True)
-        meses_formateados = [f"{m.year}-{m.month:02d}" for m in meses_disponibles]
-        
-        mes_seleccionado_str = st.selectbox("📅 Selecciona el Mes a Analizar", options=meses_formateados)
-        mes_seleccionado_period = pd.Period(mes_seleccionado_str)
-        
-        df_filtrado = df_mes[df_mes['Mes'] == mes_seleccionado_period]
-        
-        total_ingreso_mes = df_filtrado['Total Recibido'].sum()
-        total_atenciones_mes = len(df_filtrado)
-        
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("💰 Tesoro Líquido Total (Mes)", format_currency(total_ingreso_mes))
-        col_m2.metric("👤 Aventuras Registradas (Mes)", total_atenciones_mes)
-        
-        # --- Gráfico 1: Ingresos por Lugar ---
-        ingresos_por_lugar = df_filtrado.groupby('Lugar')['Total Recibido'].sum().reset_index()
-        ingresos_por_lugar['Total Recibido'] = ingresos_por_lugar['Total Recibido'].apply(lambda x: x / 1000) # Para simplificar el eje
-        
-        fig_lugar = px.bar(
-            ingresos_por_lugar, 
-            x='Lugar', 
-            y='Total Recibido', 
-            title=f"Tesoro Líquido por Castillo (Miles de ${mes_seleccionado_str})",
-            labels={'Total Recibido': 'Tesoro Líquido (k$)', 'Lugar': 'Castillo'},
-            color='Lugar',
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_lugar, use_container_width=True)
+        st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
-        # --- Gráfico 2: Distribución por Método de Pago ---
-        ingresos_por_pago = df_filtrado.groupby('Método Pago')['Total Recibido'].sum().reset_index()
-        fig_pago = px.pie(
-            ingresos_por_pago, 
-            values='Total Recibido', 
-            names='Método Pago', 
-            title=f"Distribución del Tesoro por Método de Pago ({mes_seleccionado_str})",
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_pago, use_container_width=True)
-
-
+# --- Bloque de Configuración (Mantenido) ---
 with tab_config:
-    # =========================================================================
-    # CONFIGURACIÓN MAESTRA
-    # =========================================================================
-    st.subheader("⚙️ Configuración Maestra del Tesoro y Tributos")
-    st.markdown("Modifica los precios, descuentos fijos y comisiones por pago. Los cambios se guardan automáticamente.")
+    st.header("⚙️ Configuración Maestra")
+    st.info("⚠️ Los cambios aquí modifican el cálculo para **TODAS** las nuevas entradas y se guardan inmediatamente.")
 
-    tab_precios, tab_descuentos_fijos, tab_comisiones = st.tabs(["Precios Base", "Tributos Fijos/Reglas", "Comisiones por Pago"])
-
-    # -----------------------------------------------
-    # 6.1. PRECIOS BASE
-    # -----------------------------------------------
+    tab_precios, tab_descuentos, tab_comisiones = st.tabs(["Precios por Ítem", "Descuentos Fijos (Tributo)", "Comisiones de Pago"])
+    
+    # 1. PRECIOS POR LUGAR/ÍTEM
     with tab_precios:
-        st.markdown("### 💰 Precios Base por Castillo/Lugar y Poción/Procedimiento")
-        st.warning("🚨 Importante: Modificar estos valores no afecta los registros pasados. Solo los nuevos registros usarán estos precios sugeridos.")
+        st.subheader("💰 Recompensas Base (Valor Bruto)")
         
-        # Convertir la configuración anidada a un DataFrame para edición
-        precios_data = []
+        precios_df_list = []
         for lugar, items in PRECIOS_BASE_CONFIG.items():
             for item, precio in items.items():
-                precios_data.append({'Lugar': lugar, 'Ítem': item, 'Valor Bruto Base': precio})
+                precios_df_list.append({'Lugar': lugar, 'Ítem': item, 'Precio Sugerido': precio})
                 
-        df_precios = pd.DataFrame(precios_data)
+        precios_df = pd.DataFrame(precios_df_list)
         
-        # Usar st.data_editor para permitir edición en línea
-        edited_df_precios = st.data_editor(
-            df_precios,
+        edited_precios_df = st.data_editor(
+            precios_df,
+            key="precios_editor",
+            width='stretch',
             num_rows="dynamic",
-            use_container_width=True,
             column_config={
-                "Valor Bruto Base": st.column_config.NumberColumn(
-                    "Valor Bruto Base",
-                    format="$%d",
-                    min_value=0,
-                    step=1000,
-                )
-            },
-            key="precios_data_editor"
+                "Precio Sugerido": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d")
+            }
         )
         
-        if st.button("💾 Guardar Precios Base Actualizados", key="save_precios_btn", type="primary"):
+        if st.button("💾 Guardar Configuración de Precios", type="primary"):
             new_precios_config = {}
-            for _, row in edited_df_precios.iterrows():
-                lugar = row['Lugar'].upper().strip()
-                item = str(row['Ítem']).strip()
-                precio = sanitize_number_input(row['Valor Bruto Base'])
+            for index, row in edited_precios_df.iterrows():
+                lugar = str(row['Lugar']).upper()
+                item = str(row['Ítem'])
+                precio = sanitize_number_input(row['Precio Sugerido'])
                 
-                if lugar and item:
-                    if lugar not in new_precios_config:
-                        new_precios_config[lugar] = {}
+                if lugar not in new_precios_config:
+                    new_precios_config[lugar] = {}
+                
+                if item and precio >= 0:
                     new_precios_config[lugar][item] = precio
                     
             save_config(new_precios_config, PRECIOS_FILE)
-            re_load_global_config() # Recargar la configuración global
-            st.toast("✅ Precios Base Guardados y Recargados.", icon="💰")
+            re_load_global_config() 
+            time.sleep(0.1) 
+            st.success("Configuración de Precios Guardada y Recargada.")
             st.rerun()
 
+    # 2. DESCUENTOS FIJOS POR LUGAR (TRIBUTO) Y REGLAS
+    with tab_descuentos:
+        
+        st.subheader("✂️ Tributo Fijo Base por Castillo/Lugar")
 
-    # -----------------------------------------------
-    # 6.2. DESCUENTOS FIJOS Y REGLAS (TRIBUTOS)
-    # -----------------------------------------------
-    with tab_descuentos_fijos:
-        st.markdown("### 🏛️ Tributos Fijos por Castillo/Lugar")
-        st.warning("El Tributo es un descuento **fijo** que se aplica por el solo hecho de la atención en ese Lugar, **a menos que** exista una regla especial por día para ese Lugar.")
+        descuentos_df = pd.DataFrame(list(DESCUENTOS_LUGAR.items()), columns=['Lugar', 'Desc. Fijo Base'])
         
-        # Descuentos Fijos por Lugar (Inicial)
-        df_desc_lugar = pd.DataFrame(
-            DESCUENTOS_LUGAR.items(), 
-            columns=['Lugar', 'Tributo Base (Desc. Fijo)']
-        )
-        
-        edited_df_desc_lugar = st.data_editor(
-            df_desc_lugar,
+        edited_descuentos_df = st.data_editor(
+            descuentos_df,
+            key="descuentos_editor",
+            width='stretch',
             num_rows="dynamic",
-            use_container_width=True,
             column_config={
-                "Tributo Base (Desc. Fijo)": st.column_config.NumberColumn(
-                    "Tributo Base (Desc. Fijo)",
-                    format="$%d",
-                    min_value=0,
-                    step=100,
-                )
-            },
-            key="desc_lugar_data_editor"
+                "Desc. Fijo Base": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d")
+            }
         )
         
-        if st.button("💾 Guardar Tributos Base", key="save_desc_lugar_btn", type="primary"):
-            new_desc_config = {}
-            for _, row in edited_df_desc_lugar.iterrows():
-                lugar = str(row['Lugar']).upper().strip()
-                monto = sanitize_number_input(row['Tributo Base (Desc. Fijo)'])
-                
+        if st.button("💾 Guardar Configuración de Tributo Base", type="primary", key='btn_save_desc_base'):
+            new_descuentos_config = {}
+            for index, row in edited_descuentos_df.iterrows():
+                lugar = str(row['Lugar']).upper()
+                descuento = sanitize_number_input(row['Desc. Fijo Base'])
                 if lugar:
-                    new_desc_config[lugar] = monto
+                    new_descuentos_config[lugar] = descuento
                     
-            save_config(new_desc_config, DESCUENTOS_FILE)
+            save_config(new_descuentos_config, DESCUENTOS_FILE)
             re_load_global_config()
-            st.toast("✅ Tributos Base Guardados y Recargados.", icon="🏛️")
+            time.sleep(0.1) 
+            st.success("Configuración de Tributo Base Guardada y Recargada.")
             st.rerun()
             
         st.markdown("---")
         
-        # Reglas Especiales por Día
-        st.markdown("### 🗓️ Reglas Especiales por Día de la Semana (Sobrescriben el Tributo Base)")
-        st.info("Define montos de tributo diferentes para días específicos. Si se deja un Lugar sin reglas, usará el Tributo Base.")
+        st.subheader("🗓️ Reglas de Tributo por Día de la Semana")
         
-        reglas_data = []
-        for lugar, reglas in DESCUENTOS_REGLAS.items():
-            for dia, monto in reglas.items():
-                reglas_data.append({'Lugar': lugar, 'Día de la Semana': dia, 'Tributo Especial': monto})
-                
-        df_reglas = pd.DataFrame(reglas_data)
-        
-        edited_df_reglas = st.data_editor(
-            df_reglas,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Día de la Semana": st.column_config.SelectboxColumn(
-                    "Día de la Semana",
-                    options=DIAS_SEMANA
-                ),
-                "Lugar": st.column_config.SelectboxColumn(
-                    "Lugar",
-                    options=LUGARES
-                ),
-                "Tributo Especial": st.column_config.NumberColumn(
-                    "Tributo Especial",
-                    format="$%d",
-                    min_value=0,
-                    step=100,
-                )
-            },
-            key="reglas_data_editor"
-        )
-        
-        if st.button("💾 Guardar Reglas Especiales", key="save_reglas_btn", type="secondary"):
-            new_reglas_config = {}
-            for _, row in edited_df_reglas.iterrows():
-                lugar = str(row['Lugar']).upper().strip()
-                dia = str(row['Día de la Semana']).upper().strip()
-                monto = sanitize_number_input(row['Tributo Especial'])
-                
-                if lugar and dia in DIAS_SEMANA:
+        with st.expander("🛠️ Editar Reglas Diarias", expanded=False):
+            
+            reglas_list = []
+            for lugar, reglas in DESCUENTOS_REGLAS.items():
+                for dia, monto in reglas.items():
+                    reglas_list.append({'Lugar': lugar, 'Día': dia, 'Tributo Diario': monto})
+            
+            reglas_df = pd.DataFrame(reglas_list)
+            
+            edited_reglas_df = st.data_editor(
+                reglas_df,
+                key="reglas_editor",
+                width='stretch',
+                num_rows="dynamic",
+                column_config={
+                    "Tributo Diario": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d"),
+                    "Día": st.column_config.SelectboxColumn(options=DIAS_SEMANA)
+                }
+            )
+
+            if st.button("💾 Guardar Reglas Diarias", type="secondary", key='btn_save_reglas'):
+                new_reglas_config = {}
+                for index, row in edited_reglas_df.iterrows():
+                    lugar = str(row['Lugar']).upper()
+                    dia = str(row['Día']).upper()
+                    monto = sanitize_number_input(row['Tributo Diario'])
+                    
                     if lugar not in new_reglas_config:
                         new_reglas_config[lugar] = {}
-                    new_reglas_config[lugar][dia] = monto
-                    
-            save_config(new_reglas_config, REGLAS_FILE)
-            re_load_global_config()
-            st.toast("✅ Reglas Especiales Guardadas y Recargadas.", icon="🗓️")
-            st.rerun()
-            
+                        
+                    if dia:
+                            new_reglas_config[lugar][dia] = monto
+                        
+                save_config(new_reglas_config, REGLAS_FILE)
+                re_load_global_config()
+                time.sleep(0.1) 
+                st.success("Configuración de Reglas Diarias Guardada y Recargada.")
+                st.rerun()
 
-    # -----------------------------------------------
-    # 6.3. COMISIONES POR PAGO
-    # -----------------------------------------------
+
+    # 3. COMISIONES POR MÉTODO DE PAGO
     with tab_comisiones:
-        st.markdown("### 💳 Comisiones por Método de Pago")
-        st.info("Estas comisiones se aplican al Valor Bruto **descontando el Polvo Mágico Extra** (Desc. Adicional) si el método es 'TARJETA'. Para otros métodos, el valor es 0.00.")
+        st.subheader("💳 Comisiones por Método de Pago")
         
-        # Comisiones por Pago
-        df_comisiones = pd.DataFrame(
-            COMISIONES_PAGO.items(), 
-            columns=['Método Pago', 'Comisión (%)']
-        )
+        comisiones_df = pd.DataFrame(list(COMISIONES_PAGO.items()), columns=['Método de Pago', 'Comisión %'])
         
-        edited_df_comisiones = st.data_editor(
-            df_comisiones,
+        edited_comisiones_df = st.data_editor(
+            comisiones_df,
+            key="comisiones_editor",
+            width='stretch',
             num_rows="dynamic",
-            use_container_width=True,
             column_config={
-                "Comisión (%)": st.column_config.NumberColumn(
-                    "Comisión (%)",
-                    format="%.2f",
-                    min_value=0.00,
-                    max_value=1.00,
-                    step=0.005,
-                )
-            },
-            key="comisiones_data_editor"
+                "Comisión %": st.column_config.NumberColumn(format="%.2f")
+            }
         )
         
-        if st.button("💾 Guardar Comisiones por Pago", key="save_comisiones_btn", type="primary"):
+        if st.button("💾 Guardar Configuración de Comisiones", type="primary", key='btn_save_comisiones'):
             new_comisiones_config = {}
-            for _, row in edited_df_comisiones.iterrows():
-                metodo = str(row['Método Pago']).upper().strip()
-                comision = float(row['Comisión (%)'])
-                
+            for index, row in edited_comisiones_df.iterrows():
+                metodo = str(row['Método de Pago']).upper()
+                comision = float(row['Comisión %'])
                 if metodo:
                     new_comisiones_config[metodo] = comision
                     
             save_config(new_comisiones_config, COMISIONES_FILE)
             re_load_global_config()
-            st.toast("✅ Comisiones Guardadas y Recargadas.", icon="💳")
+            time.sleep(0.1) 
+            st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
-
-# Fin del script.
