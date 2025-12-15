@@ -327,6 +327,7 @@ def _cleanup_edit_state():
         f'btn_update_price_form_{edited_id}', 
         f'btn_update_tributo_form_{edited_id}', 
         f'btn_update_tarjeta_form_{edited_id}', 
+        f'btn_delete_form_{edited_id}' # Añadido el botón de eliminar del formulario de edición
     ]
     
     for key in keys_to_delete:
@@ -1064,7 +1065,7 @@ with tab_dashboard:
             # --- Botones de Control Final ---
             st.markdown("---")
             
-            # Se usan solo dos columnas ahora, ya que se eliminó el botón de borrar
+            # Se usan solo tres columnas para el control final
             col_final1, col_final2, col_final3 = st.columns([0.6, 0.2, 0.2])
             
             # Botón de Guardado general
@@ -1084,17 +1085,17 @@ with tab_dashboard:
             with col_final2:
                 st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, use_container_width=True)
 
-            # Botón de Eliminar
+            # Botón de Eliminar (SOLO EN MODO EDICIÓN)
             with col_final3:
                 st.button("🗑️ Eliminar", key=f'btn_delete_form_{edited_id}', on_click=delete_record_callback, args=(edited_id,), type="danger", use_container_width=True)
 
 
         # =================================================================
-        # 🚨 NUEVA SECCIÓN: DIBUJAR TABLA DE DATOS CUANDO NO HAY EDICIÓN
+        # 🚨 SECCIÓN: DIBUJAR TABLA DE DATOS CUANDO NO HAY EDICIÓN
         # =================================================================
         else: 
             st.markdown("### 🗺️ Registros Detallados")
-            # Usar la columna de acciones como la última
+            
             df_with_actions = df_display.copy()
 
             # Asegurar que la columna de acciones exista antes de agregarla al editor
@@ -1102,7 +1103,7 @@ with tab_dashboard:
                 df_with_actions.insert(len(df_with_actions.columns), 'Acciones', '')
 
 
-            # DIBUJAR LA TABLA USANDO data_editor PARA AÑADIR ACCIONES AL FINAL
+            # 1. DIBUJAR LA TABLA DE DATOS (VISUALIZACIÓN)
             config_columns = {
                 'ID': st.column_config.NumberColumn(width='small', help="Identificador único del registro", disabled=True),
                 'Fecha': st.column_config.DateColumn(format="YYYY-MM-DD", disabled=True),
@@ -1118,9 +1119,6 @@ with tab_dashboard:
                 'Acciones': st.column_config.TextColumn(width='small', disabled=True) 
             }
             
-            # Ocultar la columna de Desc. Tarjeta, que ya no está en df_display
-            
-            # 1. Dibujar el editor de datos (que es solo una tabla de visualización con acciones)
             st.data_editor(
                 df_with_actions.sort_values(by='ID', ascending=False), # Mostrar los más nuevos primero
                 column_config=config_columns,
@@ -1130,36 +1128,30 @@ with tab_dashboard:
                 key='ingresos_viewer'
             )
 
-            # 2. Dibujar los botones de acción Fila por Fila (fuera del data_editor)
+            # 2. DIBUJAR LOS BOTONES DE ACCIÓN (Editar) Fila por Fila (fuera del data_editor)
             st.markdown("#### Acciones por Registro")
-            st.markdown("---")
             
-            # Usamos st.columns para alinear los botones debajo de la tabla
             for index, row in df.sort_values(by='ID', ascending=False).iterrows():
                 record_id = row['ID']
                 
-                # Crear las columnas para la fila de botones (ID + Botones)
-                col_id, col_edit, col_delete, col_spacer = st.columns([0.15, 0.15, 0.15, 0.55]) 
-                
-                with col_id:
-                    st.markdown(f"**ID:** `{record_id}`")
-                
-                with col_edit:
-                    st.button("Editar ✏️", 
-                              key=f'btn_edit_{record_id}', 
-                              on_click=edit_record_callback, 
-                              args=(record_id,), 
-                              use_container_width=True)
-                
-                with col_delete:
-                     st.button("Eliminar 🗑️", 
-                               key=f'btn_delete_{record_id}', 
-                               on_click=delete_record_callback, 
-                               args=(record_id,), 
-                               type='danger',
-                               use_container_width=True)
-                
-                st.markdown("---") # Separador visual entre filas
+                # AISLAMIENTO CLAVE PARA EVITAR STREAMLITAPIEXCEPTION
+                with st.container():
+                    # Ajustamos las columnas: ID (0.15), Editar (0.2), Espacio (0.65)
+                    col_id, col_edit, col_spacer = st.columns([0.15, 0.2, 0.65]) 
+                    
+                    with col_id:
+                        st.markdown(f"**ID:** `{record_id}`")
+                    
+                    with col_edit:
+                        st.button("Editar ✏️", 
+                                  key=f'btn_edit_{record_id}', 
+                                  on_click=edit_record_callback, 
+                                  args=(record_id,), 
+                                  use_container_width=True)
+                    
+                    # ELIMINAMOS EL BOTÓN DE ELIMINAR DE AQUÍ
+                    
+                    st.markdown("---") # Separador visual entre filas
 
         
         # =================================================================
