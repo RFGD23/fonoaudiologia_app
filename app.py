@@ -148,28 +148,36 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
     # 2. LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo)
-    desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
     
-    # 2.1. Revisar si existe una regla especial para el día
-    if lugar_upper in DESCUENTOS_REGLAS:
-        try:
-            # Asegurarse de que el objeto fecha sea una instancia de date
-            if isinstance(fecha_atencion, pd.Timestamp):
-                fecha_obj = fecha_atencion.date()
-            elif isinstance(fecha_atencion, date):
-                fecha_obj = fecha_atencion
-            else:
-                fecha_obj = date.today()
-            
-            dia_semana_num = fecha_obj.weekday()
-            
-            dia_nombre = DIAS_SEMANA[dia_semana_num].upper() 
-            regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
-            
-            if regla_especial is not None:
-                desc_fijo_lugar = regla_especial 
-        except Exception:
-             pass
+    # *** REGLA ESPECIAL PARA CPM: 51.3% DEL VALOR BRUTO ***
+    if lugar_upper == 'CPM':
+        # El descuento fijo es el 51.3% del valor bruto
+        desc_fijo_lugar = valor_bruto * 0.513 
+    # ******************************************************
+    else:
+        # Si no es CPM, se aplica el descuento fijo normal (base o por regla diaria)
+        desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
+    
+        # 2.1. Revisar si existe una regla especial para el día (Solo si NO es CPM)
+        if lugar_upper in DESCUENTOS_REGLAS:
+            try:
+                # Asegurarse de que el objeto fecha sea una instancia de date
+                if isinstance(fecha_atencion, pd.Timestamp):
+                    fecha_obj = fecha_atencion.date()
+                elif isinstance(fecha_atencion, date):
+                    fecha_obj = fecha_atencion
+                else:
+                    fecha_obj = date.today()
+                
+                dia_semana_num = fecha_obj.weekday()
+                
+                dia_nombre = DIAS_SEMANA[dia_semana_num].upper() 
+                regla_especial = DESCUENTOS_REGLAS[lugar_upper].get(dia_nombre)
+                
+                if regla_especial is not None:
+                    desc_fijo_lugar = regla_especial 
+            except Exception:
+                 pass
 
     # 3. Aplicar Comisión de Tarjeta
     comision_pct = COMISIONES_PAGO.get(metodo_pago_upper, 0.00) 
@@ -185,7 +193,7 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     return {
         'valor_bruto': int(valor_bruto),
-        'desc_fijo_lugar': int(desc_fijo_lugar),
+        'desc_fijo_lugar': int(desc_fijo_lugar), # Se redondea el resultado del 51.3%
         'desc_tarjeta': int(desc_tarjeta),
         'total_recibido': int(total_recibido)
     }
@@ -345,20 +353,25 @@ def update_edit_tributo():
     """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar), guarda, notifica Y CIERRA (usando bandera)."""
     current_lugar_upper = st.session_state.edit_lugar 
     
-    try:
-        current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
-    except Exception:
-        current_day_name = "LUNES" 
-    
-    # Lógica de cálculo del Tributo (se mantiene)
-    desc_fijo_calc = DESCUENTOS_LUGAR.get(current_lugar_upper, 0) # Base
-    if current_lugar_upper in DESCUENTOS_REGLAS:
-         try: 
-             regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
-             if regla_especial_monto is not None:
-                 desc_fijo_calc = regla_especial_monto
-         except Exception:
-             pass
+    # --- LÓGICA DE CÁLCULO DE TRIBUTO EN EDICIÓN ---
+    if current_lugar_upper.upper() == 'CPM':
+        # Aplica la regla del 51.3% si es CPM
+        desc_fijo_calc = int(st.session_state.edit_valor_bruto * 0.513)
+    else:
+        # Lógica de cálculo del Tributo normal (base o regla diaria)
+        try:
+            current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
+        except Exception:
+            current_day_name = "LUNES" 
+        
+        desc_fijo_calc = DESCUENTOS_LUGAR.get(current_lugar_upper, 0) # Base
+        if current_lugar_upper in DESCUENTOS_REGLAS:
+             try: 
+                 regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                 if regla_especial_monto is not None:
+                     desc_fijo_calc = regla_especial_monto
+             except Exception:
+                 pass
              
     # 1. Actualizar el valor que se usará en el cálculo final al guardar
     st.session_state.original_desc_fijo_lugar = desc_fijo_calc
@@ -688,26 +701,34 @@ with tab_registro:
                 
                 # LÓGICA DE ETIQUETADO DEL TRIBUTO
                 current_lugar_upper = st.session_state.form_lugar 
-                try:
-                    current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()] 
-                except Exception:
-                    current_day_name = "N/A"
-                    
+                
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
-                is_rule_applied = False
-                if current_lugar_upper in DESCUENTOS_REGLAS:
+                
+                # AJUSTE DE ETIQUETA PARA CPM
+                if current_lugar_upper.upper() == 'CPM':
+                    desc_lugar_label = f"Tributo al Castillo (CPM - 51.3% Bruto)"
+                else:
+                    # LÓGICA DE ETIQUETADO DEL TRIBUTO NORMAL
                     try:
-                        # Convertir a mayúsculas para la búsqueda
-                        regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
-                        
-                        if regla_especial_monto is not None:
-                            desc_lugar_label += f" (Regla: {current_day_name})"
-                            is_rule_applied = True
+                        current_day_name = DIAS_SEMANA[st.session_state.form_fecha.weekday()] 
                     except Exception:
-                         pass
+                        current_day_name = "N/A"
+                        
+                    is_rule_applied = False
+                    if current_lugar_upper in DESCUENTOS_REGLAS:
+                        try:
+                            # Convertir a mayúsculas para la búsqueda
+                            regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                            
+                            if regla_especial_monto is not None:
+                                desc_lugar_label += f" (Regla: {current_day_name})"
+                                is_rule_applied = True
+                        except Exception:
+                             pass
+    
+                    if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
+                        desc_lugar_label += " (Base)"
 
-                if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
-                    desc_lugar_label += " (Base)"
                 
                 st.info(f"**{desc_lugar_label}:** {format_currency(resultados['desc_fijo_lugar'])}")
                 
@@ -1020,8 +1041,7 @@ with tab_dashboard:
         if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
             st.session_state.edited_lugar_state = data_to_edit['Lugar']
             
-        # 💡 --- INICIALIZACIÓN SEGURA DE VALORES DEL MODAL (¡CORRECCIÓN DEL ERROR!) ---
-        # Aseguramos que todas las claves de number_input existan antes de que se lean
+        # 💡 --- INICIALIZACIÓN SEGURA DE VALORES DEL MODAL ---
         if 'edit_valor_bruto' not in st.session_state:
             st.session_state.edit_valor_bruto = int(data_to_edit['Valor Bruto'])
             
@@ -1164,18 +1184,22 @@ with tab_dashboard:
                 
                 # LÓGICA DE ETIQUETADO DEL TRIBUTO EN EDICIÓN
                 current_lugar_upper = st.session_state.edit_lugar 
-                current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
-                desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
-                if current_lugar_upper in DESCUENTOS_REGLAS:
-                    try:
-                        regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
-                        if regla_especial_monto is not None:
-                            desc_lugar_label += f" (Regla: {current_day_name})"
-                    except Exception:
-                        pass
-                elif DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
-                    desc_lugar_label += " (Base)"
+                if current_lugar_upper.upper() == 'CPM':
+                    desc_lugar_label = f"Tributo al Castillo (CPM - 51.3% Bruto)"
+                else:
+                    current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
+                    desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
+                    
+                    if current_lugar_upper in DESCUENTOS_REGLAS:
+                        try:
+                            regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                            if regla_especial_monto is not None:
+                                desc_lugar_label += f" (Regla: {current_day_name})"
+                        except Exception:
+                            pass
+                    elif DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
+                        desc_lugar_label += " (Base)"
                 
                 with col_tributo_text:
                     st.info(f"**{desc_lugar_label}:** {format_currency(desc_fijo_display)}")
@@ -1207,10 +1231,6 @@ with tab_dashboard:
             
             # EL BOTÓN "GUARDAR EDICIÓN" CIERRA EL EXPANDER Y ACTIVA LA BANDERA
             if col_actions[0].button("💾 Guardar Edición", use_container_width=True, type="primary", key="save_edit"):
-                
-                # Ya que los botones de actualización guardan, solo queda asegurar que si no se presionaron, 
-                # se guarden los inputs de Fecha, Lugar, Ítem, Paciente, Metodo Pago y los number_inputs 
-                # (que se actualizan al cambiar el número).
                 
                 # Llama a guardar la última vez para asegurar que todos los campos del formulario se persistan
                 save_edit_state_to_df()
@@ -1303,6 +1323,7 @@ with tab_config:
     
     with st.expander("✂️ Administrar Descuentos Fijos y Reglas (Tributo al Castillo)"):
         st.subheader("Tributo Fijo al Castillo (Descuento Base)")
+        st.info("⚠️ El lugar **CPM** tiene una regla de cálculo automática (51.3% del Valor Bruto). El valor que se ingrese aquí para 'CPM' **será ignorado** en el cálculo final.")
 
         df_descuentos_fijos = pd.DataFrame(
             list(DESCUENTOS_LUGAR.items()), 
@@ -1346,7 +1367,7 @@ with tab_config:
                 
         # --- Reglas de Descuento por Día ---
         st.subheader("Reglas de Descuento por Día de la Semana")
-        st.info("Define un monto de descuento diferente al base, solo para un día específico de la semana y un lugar.")
+        st.info("Define un monto de descuento diferente al base, solo para un día específico de la semana y un lugar. (Esta regla no aplica para CPM)")
         
         # Transformar DESCUENTOS_REGLAS (anidado) a DataFrame plano
         reglas_plano = []
