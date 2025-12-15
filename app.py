@@ -135,11 +135,20 @@ def get_db_connection():
 def load_data_from_db():
     """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID ASC (1, 2, 3...)**."""
     conn = get_db_connection()
+    # 🚨 CORRECCIÓN DE ORDEN: Aseguramos el orden ascendente (1, 2, 3...) desde la BD
     df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id ASC", conn) 
     conn.close()
     
     if not df.empty:
         df['Fecha'] = df['Fecha'].apply(lambda x: parse(x).date() if pd.notna(x) else None)
+        
+        # 🚨 CORRECCIÓN DE TIPO: Forzamos las columnas clave a enteros para evitar TypeErrors futuros
+        numeric_cols = ['id', 'Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido']
+        for col in numeric_cols:
+            if col in df.columns:
+                # Usamos to_numeric con coerce para manejar posibles errores, rellenar NaN con 0, y convertir a int
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+
     
     if 'Item' in df.columns:
         df = df.rename(columns={'Item': 'Ítem'})
@@ -346,10 +355,19 @@ def save_edit_state_to_df():
         
     record_id = st.session_state.edited_record_id
     
-    valor_bruto_final = st.session_state[f'edit_valor_bruto_{record_id}']
-    desc_adicional_final = st.session_state[f'edit_desc_adic_{record_id}']
-    desc_fijo_final = st.session_state.get('original_desc_fijo_lugar', 0)
-    desc_tarjeta_final = st.session_state.get('original_desc_tarjeta', 0)
+    # 🚨 ASEGURAR TIPOS NUMÉRICOS AL LEER DEL WIDGET
+    try:
+        valor_bruto_final = int(st.session_state[f'edit_valor_bruto_{record_id}'])
+    except:
+        valor_bruto_final = 0
+    
+    try:
+        desc_adicional_final = int(st.session_state[f'edit_desc_adic_{record_id}'])
+    except:
+        desc_adicional_final = 0
+        
+    desc_fijo_final = int(st.session_state.get('original_desc_fijo_lugar', 0))
+    desc_tarjeta_final = int(st.session_state.get('original_desc_tarjeta', 0))
     
     total_liquido_final = (
         valor_bruto_final
@@ -369,7 +387,7 @@ def save_edit_state_to_df():
         "Desc. Fijo Lugar": desc_fijo_final,
         "Desc. Tarjeta": desc_tarjeta_final,
         "Desc. Adicional": desc_adicional_final,
-        "Total Recibido": total_liquido_final
+        "Total Recibido": total_liquido_final # Asegurado como INT arriba
     }
     
     if update_existing_record(data_to_update): 
@@ -812,7 +830,8 @@ with tab_dashboard:
         df_display['Fecha'] = df_display['Fecha'].astype(str)
         
         # --- MÉTRICAS Y GRÁFICOS (Implementación mantenida) ---
-        total_ingreso = df['Tesoro Líquido'].sum()
+        # Ahora que load_data_from_db fuerza el tipo, la suma es segura.
+        total_ingreso = df['Tesoro Líquido'].sum() 
         total_atenciones = len(df)
         
         col_m1, col_m2 = st.columns(2)
@@ -930,19 +949,37 @@ with tab_dashboard:
 
             with col_e3:
                 st.subheader("Estado Actual (No Editable)")
-                current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Tributo'])
-                current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta'])
+                # Forzamos los valores a int para el cálculo de la vista previa
+                try:
+                    current_desc_fijo = int(st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Tributo']))
+                except:
+                    current_desc_fijo = 0
+                
+                try:
+                    current_desc_tarjeta = int(st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta']))
+                except:
+                    current_desc_tarjeta = 0
+                
+                try:
+                    current_valor_bruto = int(st.session_state[f'edit_valor_bruto_{edited_id}'])
+                except:
+                    current_valor_bruto = 0
+                    
+                try:
+                    current_desc_adicional = int(st.session_state[f'edit_desc_adic_{edited_id}'])
+                except:
+                    current_desc_adicional = 0
                 
                 total_liquido_live = (
-                    st.session_state[f'edit_valor_bruto_{edited_id}']
+                    current_valor_bruto
                     - current_desc_fijo
                     - current_desc_tarjeta
-                    - st.session_state[f'edit_desc_adic_{edited_id}']
+                    - current_desc_adicional
                 )
                 
                 st.metric("❌ Desc. Fijo/Tributo", format_currency(current_desc_fijo))
                 st.metric("💳 Desc. Tarjeta", format_currency(current_desc_tarjeta))
-                st.metric("✂️ Desc. Adicional", format_currency(st.session_state[f'edit_desc_adic_{edited_id}']))
+                st.metric("✂️ Desc. Adicional", format_currency(current_desc_adicional))
                 
                 st.markdown("---")
                 
@@ -979,10 +1016,9 @@ with tab_dashboard:
             
             # --- 1. DIBUJAR LA TABLA DE DATOS (VISUALIZACIÓN) ---
             df_with_actions = df_display.copy()
-            # Quitamos la columna 'Acciones' de la tabla ya que no hay botones por fila.
             df_display_no_actions = df_with_actions.drop(columns=['Acciones'], errors='ignore')
 
-            # Definición de columnas SIN la columna 'Acciones'
+            # Definición de columnas 
             config_columns = {
                 'ID': st.column_config.NumberColumn(width='small', help="Identificador único del registro", disabled=True),
                 'Fecha': st.column_config.TextColumn(disabled=True),
@@ -996,8 +1032,9 @@ with tab_dashboard:
                 'Tesoro Líquido': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", help="Total final recibido después de descuentos y ajustes", disabled=True),
             }
             
+            # 🚨 CORRECCIÓN DE ORDEN: Usamos el df cargado desde la BD que ya está ordenado ASC
             st.data_editor(
-                df_display_no_actions.sort_values(by='ID', ascending=False),
+                df_display_no_actions, # No aplicamos sort_values aquí, ya está ordenado
                 column_config=config_columns,
                 hide_index=True,
                 use_container_width=True,
@@ -1010,7 +1047,6 @@ with tab_dashboard:
             # --- 2. SECCIÓN DE EDICIÓN POR ID ---
             st.subheader("🔍 Editar Registro Específico (por ID)")
             
-            # Buscamos los valores min/max para el input
             min_id = df['ID'].min() if not df.empty else 1
             max_id = df['ID'].max() if not df.empty else 10000
 
@@ -1022,16 +1058,13 @@ with tab_dashboard:
                     min_value=min_id, 
                     max_value=max_id, 
                     step=1, 
-                    # Usamos None si el DF está vacío para que no inicie en 1 automáticamente
                     value=int(min_id) if not df.empty else None, 
                     key='input_id_edit'
                 )
             
-            # Verificación del ID
             is_valid_id = id_to_edit is not None and id_to_edit in df['ID'].values
             
             with col_button:
-                # Usamos un espacio vacío para alinear el botón verticalmente
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 if st.button(
@@ -1041,12 +1074,10 @@ with tab_dashboard:
                     use_container_width=False, 
                     disabled=not is_valid_id
                 ):
-                    # Llama al callback para iniciar el modo edición y recarga la página
                     edit_record_callback(id_to_edit)
                     st.rerun()
 
             if id_to_edit is not None and not is_valid_id:
-                 # Muestra error si se ingresó un valor que no existe
                  st.error(f"El ID {int(id_to_edit)} no existe en los registros actuales. Por favor, verifica el ID en la tabla de arriba.")
 
             st.markdown("---") 
