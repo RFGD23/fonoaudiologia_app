@@ -48,6 +48,7 @@ def load_config(filename):
         elif filename == COMISIONES_FILE:
             default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03, 'AMAR AUSTRAL': 0.00}
         elif filename == REGLAS_FILE:
+            # Los montos están en int para ser consistentes con la corrección
             default_data = {'AMAR AUSTRAL': {'LUNES': 0, 'MARTES': 8000, 'VIERNES': 6500}} 
         else:
             default_data = {}
@@ -82,7 +83,7 @@ def re_load_global_config():
     for lugar, reglas in reglas_raw.items():
         lugar_upper = lugar.upper()
         # CORRECCIÓN DE SYNTAXIS (AttributeError resuelto)
-        reglas_upper = {dia.upper(): monto for dia, monto in reglas.items()} 
+        reglas_upper = {dia.upper(): sanitize_number_input(monto) for dia, monto in reglas.items()} 
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
     # Recrear las listas dinámicas
@@ -1063,7 +1064,8 @@ with tab_config:
         data_for_df = []
         for lugar, items in PRECIOS_BASE_CONFIG.items():
             for item, precio in items.items():
-                data_for_df.append({"Lugar": lugar, "Ítem": item, "Valor Bruto": int(precio)})
+                # Asegurar que el precio es int antes de mostrarlo
+                data_for_df.append({"Lugar": lugar, "Ítem": item, "Valor Bruto": sanitize_number_input(precio)})
         
         if data_for_df:
             df_precios = pd.DataFrame(data_for_df)
@@ -1081,7 +1083,7 @@ with tab_config:
                     help="Precio sugerido para este Ítem en este Lugar.",
                     min_value=0,
                     step=1000,
-                    format="$%,d"
+                    # ELIMINADO EL FORMATO DE MONEDA PARA EVITAR EL SyntaxError
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True),
                 "Ítem": st.column_config.TextColumn("Ítem", required=True)
@@ -1097,7 +1099,7 @@ with tab_config:
                 for _, row in edited_df_precios.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     item = str(row['Ítem'])
-                    # [CORRECCIÓN APLICADA] Usar la función robusta de sanitización
+                    # Usar la función robusta de sanitización
                     valor = sanitize_number_input(row['Valor Bruto']) 
                     
                     if lugar and item and item != 'None':
@@ -1139,7 +1141,7 @@ with tab_config:
                     help="Monto fijo que se descuenta por defecto en este Lugar.",
                     min_value=0,
                     step=500,
-                    format="$%,d"
+                    # ELIMINADO EL FORMATO DE MONEDA PARA EVITAR EL SyntaxError
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True)
             },
@@ -1152,7 +1154,7 @@ with tab_config:
                 new_descuentos_config = {}
                 for _, row in edited_df_descuentos.iterrows():
                     lugar = str(row['Lugar']).upper() 
-                    # [CORRECCIÓN APLICADA] Usar la función robusta de sanitización
+                    # Usar la función robusta de sanitización
                     valor = sanitize_number_input(row['Desc. Fijo Base']) 
                     if lugar:
                         new_descuentos_config[lugar] = valor
@@ -1188,7 +1190,7 @@ with tab_config:
                     help="Monto que reemplaza al 'Desc. Fijo Base' si coincide el día y lugar.",
                     min_value=0,
                     step=500,
-                    format="$%,d"
+                    # ELIMINADO EL FORMATO DE MONEDA PARA EVITAR EL SyntaxError
                 ),
                 "Lugar": st.column_config.TextColumn("Lugar", required=True),
                 "Día": st.column_config.SelectboxColumn(
@@ -1207,7 +1209,7 @@ with tab_config:
                 for _, row in edited_df_reglas.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     dia = str(row['Día']).upper() 
-                    # [CORRECCIÓN APLICADA] Usar la función robusta de sanitización
+                    # Usar la función robusta de sanitización
                     monto = sanitize_number_input(row['Descuento Regla']) 
                     
                     if lugar and dia and dia in DIAS_SEMANA:
