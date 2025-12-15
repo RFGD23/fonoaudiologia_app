@@ -335,6 +335,7 @@ def _cleanup_edit_state():
         if key in st.session_state: del st.session_state[key] 
         
     st.session_state.edited_record_id = None 
+    st.session_state.input_id_edit = None # Limpia el input de ID de edición también
 
 
 def save_edit_state_to_df():
@@ -580,6 +581,10 @@ if 'edited_record_id' not in st.session_state:
     
 if 'deletion_pending_cleanup' not in st.session_state:
     st.session_state.deletion_pending_cleanup = False
+    
+# Nuevo estado para el input de ID de edición
+if 'input_id_edit' not in st.session_state:
+    st.session_state.input_id_edit = None 
 
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
@@ -857,7 +862,6 @@ with tab_dashboard:
         if edited_id is not None and edited_id in df['ID'].values: 
             # -------------------------------------------------------------
             # DIBUJAR FORMULARIO DE EDICIÓN 
-            # (El código del formulario de edición debe ir aquí)
             # -------------------------------------------------------------
             edit_row = df[df['ID'] == edited_id].iloc[0]
             
@@ -968,17 +972,17 @@ with tab_dashboard:
 
 
         # =================================================================
-        # 🚨 SECCIÓN CLAVE: DIBUJAR TABLA Y BOTONES ALINEADOS 🚨
+        # 🚨 NUEVA SECCIÓN DE BÚSQUEDA POR ID Y TABLA 🚨
         # =================================================================
         else: 
             st.markdown("### 🗺️ Registros Detallados")
             
+            # --- 1. DIBUJAR LA TABLA DE DATOS (VISUALIZACIÓN) ---
             df_with_actions = df_display.copy()
+            # Quitamos la columna 'Acciones' de la tabla ya que no hay botones por fila.
+            df_display_no_actions = df_with_actions.drop(columns=['Acciones'], errors='ignore')
 
-            if 'Acciones' not in df_with_actions.columns:
-                df_with_actions.insert(len(df_with_actions.columns), 'Acciones', '')
-
-            # 1. DIBUJAR LA TABLA DE DATOS (VISUALIZACIÓN)
+            # Definición de columnas SIN la columna 'Acciones'
             config_columns = {
                 'ID': st.column_config.NumberColumn(width='small', help="Identificador único del registro", disabled=True),
                 'Fecha': st.column_config.TextColumn(disabled=True),
@@ -990,11 +994,10 @@ with tab_dashboard:
                 'Desc. Tributo': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
                 'Desc. Ajuste': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
                 'Tesoro Líquido': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", help="Total final recibido después de descuentos y ajustes", disabled=True),
-                'Acciones': st.column_config.TextColumn(width='small', disabled=True) 
             }
             
             st.data_editor(
-                df_with_actions.sort_values(by='ID', ascending=False),
+                df_display_no_actions.sort_values(by='ID', ascending=False),
                 column_config=config_columns,
                 hide_index=True,
                 use_container_width=True,
@@ -1002,29 +1005,51 @@ with tab_dashboard:
                 key='ingresos_viewer'
             )
 
-            # 2. DIBUJAR LOS BOTONES DE ACCIÓN (Alineación visual)
+            st.markdown("---")
+
+            # --- 2. SECCIÓN DE EDICIÓN POR ID ---
+            st.subheader("🔍 Editar Registro Específico (por ID)")
             
-            st.markdown("### Acciones por Registro")
+            # Buscamos los valores min/max para el input
+            min_id = df['ID'].min() if not df.empty else 1
+            max_id = df['ID'].max() if not df.empty else 10000
+
+            col_input, col_button = st.columns([0.2, 0.8])
             
-            for index, row in df.sort_values(by='ID', ascending=False).iterrows():
-                record_id = row['ID']
+            with col_input:
+                id_to_edit = st.number_input(
+                    "ID a editar:", 
+                    min_value=min_id, 
+                    max_value=max_id, 
+                    step=1, 
+                    # Usamos None si el DF está vacío para que no inicie en 1 automáticamente
+                    value=int(min_id) if not df.empty else None, 
+                    key='input_id_edit'
+                )
+            
+            # Verificación del ID
+            is_valid_id = id_to_edit is not None and id_to_edit in df['ID'].values
+            
+            with col_button:
+                # Usamos un espacio vacío para alinear el botón verticalmente
+                st.markdown("<br>", unsafe_allow_html=True)
                 
-                with st.container():
-                    # 🚨 AJUSTE DE PROPORCIONES CLAVE PARA ALINEACIÓN 🚨
-                    # [ID (0.15), ESPACIO (0.70), BOTÓN (0.15)] = 1.0
-                    col_id, col_spacer, col_edit = st.columns([0.15, 0.70, 0.15]) 
-                    
-                    with col_id:
-                        st.markdown(f"**ID:** `{record_id}`")
-                    
-                    with col_edit:
-                        st.button("Editar ✏️", 
-                                  key=f'btn_edit_{record_id}', 
-                                  on_click=edit_record_callback, 
-                                  args=(record_id,), 
-                                  use_container_width=True)
-                    
-                    st.markdown("---") 
+                if st.button(
+                    "✏️ Iniciar Edición", 
+                    key='btn_start_edit_single', 
+                    type="primary",
+                    use_container_width=False, 
+                    disabled=not is_valid_id
+                ):
+                    # Llama al callback para iniciar el modo edición y recarga la página
+                    edit_record_callback(id_to_edit)
+                    st.rerun()
+
+            if id_to_edit is not None and not is_valid_id:
+                 # Muestra error si se ingresó un valor que no existe
+                 st.error(f"El ID {int(id_to_edit)} no existe en los registros actuales. Por favor, verifica el ID en la tabla de arriba.")
+
+            st.markdown("---") 
 
         
     else:
