@@ -434,7 +434,12 @@ def update_edit_tributo(edited_id):
         desc_fijo_calc = int(current_valor_bruto * 0.487)
     else:
         try:
-            current_day_name = DIAS_SEMANA[st.session_state[f'edit_fecha_{edited_id}'].weekday()]
+            if isinstance(st.session_state[f'edit_fecha_{edited_id}'], date):
+                 current_date_obj = st.session_state[f'edit_fecha_{edited_id}']
+            else:
+                 current_date_obj = parse(st.session_state[f'edit_fecha_{edited_id}']).date()
+                 
+            current_day_name = DIAS_SEMANA[current_date_obj.weekday()]
         except Exception:
             current_day_name = "" 
         
@@ -859,7 +864,7 @@ with tab_dashboard:
 
         st.markdown("---")
         
-        # 🟢 CAMBIO IMPLEMENTADO AQUÍ: Agrupación por semana corregida
+        # 🟢 CAMBIO IMPLEMENTADO AQUÍ: Agrupación por semana corregida y etiqueta legible
         st.subheader("Tesoro Líquido Acumulado por Semana")
         
         df_temp = df.copy()
@@ -870,20 +875,25 @@ with tab_dashboard:
             {'Tesoro Líquido': 'sum'}
         ).reset_index()
         
-        # 2. Convertir el periodo semanal a la fecha de fin de semana para Plotly.
-        df_grouped_weekly['Semana'] = df_grouped_weekly['Fecha_dt'].apply(lambda x: x.end_time) 
+        # 2. Convertir el periodo semanal a una etiqueta legible (ej. "Semana 51 / 15-dic")
+        df_grouped_weekly['Semana'] = df_grouped_weekly['Fecha_dt'].apply(
+            lambda x: f"Semana {x.weekofyear} / {x.start_time.strftime('%d-%b')}"
+        ) 
         
         # 3. Crear el gráfico de líneas
         fig = px.line(
             df_grouped_weekly, 
-            x='Semana', 
+            x='Semana', # Usamos la nueva etiqueta categórica
             y='Tesoro Líquido', 
             title='Tesoro Líquido Acumulado por Semana', 
-            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Semana': 'Fin de Semana'}, 
+            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Semana': 'Período Semanal (Fecha de Inicio)'}, 
             line_shape='spline'
         )
         # Añadir marcadores para ver los puntos de datos individuales
         fig.update_traces(mode='lines+markers') 
+        
+        # Opcional: Rotar etiquetas para mejor lectura
+        fig.update_layout(xaxis_tickangle=-45)
         
         st.plotly_chart(fig, use_container_width=True)
         # 🟢 FIN DEL CAMBIO DEL GRÁFICO
