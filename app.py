@@ -181,24 +181,8 @@ def update_existing_record(record_dict):
         return False
     finally:
         conn.close()
-        
-def delete_record(record_id):
-    """
-    Elimina un registro de la base de datos por ID. 
-    """
-    conn = get_db_connection()
-    query = "DELETE FROM atenciones WHERE id = ?"
-    try:
-        # Aseguramos que el ID sea un entero
-        conn.execute(query, (int(record_id),)) 
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Error al eliminar el registro ID {record_id}: {e}")
-        return False
-    finally:
-        conn.close()
 
+# 🚨 FUNCIÓN DE ELIMINACIÓN ELIMINADA 🚨
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
@@ -342,12 +326,10 @@ def _cleanup_edit_state():
         
     st.session_state.edited_record_id = None 
     st.session_state.input_id_edit = None 
-    st.session_state.input_id_delete = None 
     
-    # También limpiamos el estado de confirmación de eliminación por si acaso
-    if 'confirming_delete_id' in st.session_state:
-        st.session_state.confirming_delete_id = None 
-
+    # 🚨 LIMPIEZA DE ESTADOS DE ELIMINACIÓN ELIMINADA 🚨
+    
+    
 def save_edit_state_to_df():
     """
     Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos SQLite.
@@ -404,7 +386,7 @@ def save_edit_state_to_df():
     return 0 
 
 # =========================================================================
-# FUNCIONES DE CALLBACKS DE EDICIÓN Y ELIMINACIÓN 
+# FUNCIONES DE CALLBACKS DE EDICIÓN
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
@@ -481,55 +463,7 @@ def edit_record_callback(record_id):
         
     st.session_state.edited_record_id = record_id
 
-# -------------------------------------------------------------
-# CALLBACK PARA LA ELIMINACIÓN (SIMPLIFICADO)
-# -------------------------------------------------------------
-def delete_record_callback(record_id):
-    """
-    Callback para eliminar un registro. 
-    Solo realiza la acción de DB y marca el estado. EL RERUN se hace fuera del callback.
-    """
-    # 1. Si el registro a eliminar es el que se estaba editando, limpiar el estado de edición
-    if st.session_state.edited_record_id == record_id:
-        _cleanup_edit_state()
-        
-    # 2. Ejecutar la eliminación
-    if delete_record(record_id):
-        # Marcamos la eliminación exitosa, pero no recargamos ni hacemos rerun aquí
-        st.session_state.deletion_success_id = record_id 
-    else:
-        st.toast(f"🚨 Error al eliminar el registro ID {record_id}.", icon="❌")
-
-    # 3. Limpiar el input de eliminación para el próximo ciclo
-    st.session_state.input_id_delete = None 
-    st.session_state.confirming_delete_id = None # Aseguramos la limpieza del estado de confirmación
-    # NO RERUN AQUÍ
-
-# -------------------------------------------------------------
-# FUNCIONES DE CONTROL DE FLUJO DE ELIMINACIÓN DE 2 PASOS
-# -------------------------------------------------------------
-
-def set_confirm_delete_id(record_id):
-    """
-    Callback crucial para establecer el ID de confirmación.
-    Fuerza un rerun para que el nuevo bloque condicional se dibuje en un ciclo limpio.
-    """
-    # 1. Limpia el estado de edición por si estaba abierto
-    if st.session_state.edited_record_id == record_id:
-        _cleanup_edit_state() 
-    
-    # 2. Seteamos la clave para activar la siguiente etapa (el bloque condicional)
-    st.session_state.confirming_delete_id = record_id
-    
-    # 🚨 SOLUCIÓN PARA StreamlitAPIException: Rerun explícito para estabilizar el estado
-    st.rerun() 
-
-
-def cancel_delete():
-    """Callback para cancelar la eliminación."""
-    st.session_state.confirming_delete_id = None 
-    st.session_state.input_id_delete = None 
-
+# 🚨 FUNCIONES DE CALLBACKS Y FLUJO DE ELIMINACIÓN ELIMINADAS 🚨
 
 def submit_and_reset():
     """Ejecuta la lógica de guardado del formulario de registro y luego resetea el formulario."""
@@ -663,39 +597,18 @@ if 'edited_record_id' not in st.session_state:
 if 'deletion_pending_cleanup' not in st.session_state:
     st.session_state.deletion_pending_cleanup = False
     
-# Estado para el éxito de eliminación
-if 'deletion_success_id' not in st.session_state:
-    st.session_state.deletion_success_id = None 
-    
 # Estado para el input de ID de edición
 if 'input_id_edit' not in st.session_state:
     st.session_state.input_id_edit = None 
     
-# Estado para el input de ID de eliminación
-if 'input_id_delete' not in st.session_state:
-    st.session_state.input_id_delete = None 
-
-# 🚨 ESTADO PARA EL FLUJO DE ELIMINACIÓN DE 2 PASOS
-if 'confirming_delete_id' not in st.session_state:
-    st.session_state.confirming_delete_id = None
+# 🚨 ESTADOS DE ELIMINACIÓN ELIMINADOS 🚨
 
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
-# BLOQUE DE LIMPIEZA POST-ELIMINACIÓN (Ahora maneja el st.rerun)
-if st.session_state.deletion_success_id is not None:
-    deleted_id = st.session_state.deletion_success_id
-    with st.spinner(f"Recargando datos después de eliminar ID {deleted_id}..."):
-        # Limpiamos caché y recargamos datos para reflejar el cambio
-        load_data_from_db.clear() 
-        st.session_state.atenciones_df = load_data_from_db() 
-        
-        # Limpiamos el estado y forzamos el rerun
-        st.session_state.deletion_success_id = None
-        st.toast(f"🗑️ Registro ID {deleted_id} eliminado exitosamente y datos recargados.", icon="✅")
-        st.rerun() 
-        
+# 🚨 BLOQUE DE LIMPIEZA POST-ELIMINACIÓN ELIMINADO 🚨
+
 # Bloque de limpieza de edición (mantenido)
 if st.session_state.deletion_pending_cleanup:
     with st.spinner("Limpiando estado y recargando la aplicación..."):
@@ -957,7 +870,7 @@ with tab_dashboard:
         st.plotly_chart(fig, use_container_width=True)
         
         
-        # --- TABLA DE DATOS CRUDA Y EDICIÓN/ELIMINACIÓN ---
+        # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
         st.subheader("Historial Completo de Aventuras (Registros)")
 
         edited_id = st.session_state.edited_record_id
@@ -1097,7 +1010,7 @@ with tab_dashboard:
 
 
         # =================================================================
-        # 🚨 SECCIÓN DE BÚSQUEDA POR ID Y TABLA 🚨
+        # SECCIÓN DE BÚSQUEDA POR ID Y TABLA
         # =================================================================
         else: 
             st.markdown("### 🗺️ Registros Detallados")
@@ -1130,13 +1043,13 @@ with tab_dashboard:
 
             st.markdown("---")
 
-            # --- 2. SECCIÓN DE EDICIÓN Y ELIMINACIÓN POR ID ---
-            st.subheader("🛠️ Mantenimiento de Registros (Edición y Eliminación)")
+            # --- 2. SECCIÓN DE EDICIÓN POR ID ---
+            st.subheader("🛠️ Mantenimiento de Registros (Solo Edición)")
             
             min_id = df['ID'].min() if not df.empty else 1
             max_id = df['ID'].max() if not df.empty else 10000
 
-            col_edit_input, col_edit_button, col_delete_input, col_delete_button = st.columns([0.15, 0.35, 0.15, 0.35])
+            col_edit_input, col_edit_button = st.columns([0.2, 0.8])
             
             # --- EDICIÓN ---
             with col_edit_input:
@@ -1164,60 +1077,8 @@ with tab_dashboard:
                     edit_record_callback(id_to_edit)
                     st.rerun()
             
-            # --- ELIMINACIÓN (Paso 1 - CON CALLBACK on_click) ---
-            with col_delete_input:
-                id_to_delete = st.number_input(
-                    "ID a eliminar:", 
-                    min_value=min_id, 
-                    max_value=max_id, 
-                    step=1, 
-                    value=int(min_id) if not df.empty and st.session_state.input_id_delete is None else st.session_state.input_id_delete, 
-                    key='input_id_delete',
-                    label_visibility="visible"
-                )
-            
-            is_valid_id_delete = id_to_delete is not None and id_to_delete in df['ID'].values
-            
-            with col_delete_button:
-                st.markdown("<br>", unsafe_allow_html=True) # Espacio para alinear el botón
-                
-                # 🚨 CAMBIO CLAVE: Usa on_click para delegar la mutación de estado
-                st.button( # <--- Esta es la línea que debe usar on_click
-                    "🗑️ Eliminar Registro", 
-                    key='btn_start_delete_single', 
-                    type="danger",
-                    use_container_width=True, 
-                    disabled=not is_valid_id_delete,
-                    on_click=set_confirm_delete_id,
-                    args=(id_to_delete,)
-                )
-
-            # 🚨 BLOQUE DE CONFIRMACIÓN (Paso 2 - Visible solo si se pulsó el botón de eliminar) 🚨
-            if st.session_state.confirming_delete_id is not None:
-                confirm_id = st.session_state.confirming_delete_id
-                
-                st.error(f"⚠️ **CONFIRMACIÓN REQUERIDA:** ¿Seguro que deseas eliminar permanentemente el Registro ID **{confirm_id}**?")
-                
-                col_c_yes, col_c_no = st.columns(2)
-                
-                with col_c_yes:
-                    if st.button(
-                        f"✅ CONFIRMAR ELIMINACIÓN del ID {confirm_id}",
-                        key='btn_confirm_delete_permanent',
-                        type="danger",
-                        use_container_width=True
-                    ):
-                        # Ejecutar la acción de la base de datos (Callback que setea deletion_success_id)
-                        delete_record_callback(confirm_id) 
-                        # El rerun ocurrirá al inicio del script
-
-                with col_c_no:
-                    st.button(
-                        "❌ CANCELAR",
-                        key='btn_cancel_delete_confirm',
-                        on_click=cancel_delete,
-                        use_container_width=True
-                    )
+            # 🚨 SECCIÓN DE ELIMINACIÓN ELIMINADA 🚨
+            # 🚨 BLOQUE DE CONFIRMACIÓN DE ELIMINACIÓN ELIMINADO 🚨
 
             if id_to_edit is not None and not is_valid_id_edit and st.session_state.edited_record_id is None:
                  st.info(f"El ID {int(id_to_edit)} no existe para editar.")
