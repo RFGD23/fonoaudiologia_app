@@ -179,7 +179,7 @@ def update_existing_record(record_dict):
         conn.close()
         
 def delete_record(record_id):
-    """Elimina un registro de la base de datos por ID."""
+    """Elimina un registro de la base de datos por ID. (La función se mantiene, pero sin botones en la interfaz)"""
     conn = get_db_connection()
     query = "DELETE FROM atenciones WHERE id = ?"
     try:
@@ -321,13 +321,13 @@ def _cleanup_edit_state():
         f'edit_paciente_{edited_id}', f'edit_metodo_{edited_id}', 
         f'edit_fecha_{edited_id}',
         
-        # 🚨 LIMPIEZA DE CLAVES DE BOTONES CONFLICTIVAS 🚨
+        # 🚨 LIMPIEZA DE CLAVES DE BOTONES CONFLICTIVAS - SOLO SE DEJAN LOS QUE EXISTEN 🚨
         f'btn_close_edit_form_{edited_id}', 
         f'btn_save_edit_form_{edited_id}', 
         f'btn_update_price_form_{edited_id}', 
         f'btn_update_tributo_form_{edited_id}', 
         f'btn_update_tarjeta_form_{edited_id}', 
-        f'btn_delete_form_{edited_id}' # Añadido el botón de eliminar del formulario de edición
+        # f'btn_delete_form_{edited_id}' <-- CLAVE ELIMINADA DEFINITIVAMENTE
     ]
     
     for key in keys_to_delete:
@@ -439,7 +439,7 @@ def update_edit_tributo(edited_id):
              try: 
                  regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
                  if regla_especial_monto is not None:
-                     desc_fijo_calc = regla_especial_monto 
+                     desc_fijo_calc = regla_especial_mula
              except Exception:
                  pass
              
@@ -453,7 +453,7 @@ def update_edit_tributo(edited_id):
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def delete_record_callback(record_id):
-    """Función de eliminación."""
+    """Función de eliminación (Mantenida por si se reintroduce la funcionalidad fuera de la interfaz principal)."""
     if delete_record(record_id):
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
@@ -1065,8 +1065,8 @@ with tab_dashboard:
             # --- Botones de Control Final ---
             st.markdown("---")
             
-            # Se usan solo tres columnas para el control final
-            col_final1, col_final2, col_final3 = st.columns([0.6, 0.2, 0.2])
+            # 🚨 MODIFICACIÓN: Ajustamos a dos columnas, eliminando la columna del botón Eliminar
+            col_final1, col_final2 = st.columns([0.8, 0.2])
             
             # Botón de Guardado general
             with col_final1:
@@ -1085,10 +1085,7 @@ with tab_dashboard:
             with col_final2:
                 st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, use_container_width=True)
 
-            # Botón de Eliminar (SOLO EN MODO EDICIÓN)
-            with col_final3:
-                st.button("🗑️ Eliminar", key=f'btn_delete_form_{edited_id}', on_click=delete_record_callback, args=(edited_id,), type="danger", use_container_width=True)
-
+            # 🚫 Botón de Eliminar (y su columna) ELIMINADO
 
         # =================================================================
         # 🚨 SECCIÓN: DIBUJAR TABLA DE DATOS CUANDO NO HAY EDICIÓN
@@ -1136,7 +1133,7 @@ with tab_dashboard:
                 
                 # AISLAMIENTO CLAVE PARA EVITAR STREAMLITAPIEXCEPTION
                 with st.container():
-                    # Ajustamos las columnas: ID (0.15), Editar (0.2), Espacio (0.65)
+                    # 🚨 MODIFICACIÓN: Ajustamos a dos columnas: ID (0.15), Editar (0.2), Espacio (0.65)
                     col_id, col_edit, col_spacer = st.columns([0.15, 0.2, 0.65]) 
                     
                     with col_id:
@@ -1149,8 +1146,8 @@ with tab_dashboard:
                                   args=(record_id,), 
                                   use_container_width=True)
                     
-                    # ELIMINAMOS EL BOTÓN DE ELIMINAR DE AQUÍ
-                    
+                    # 🚫 Botón de Eliminar ELIMINADO
+
                     st.markdown("---") # Separador visual entre filas
 
         
@@ -1310,3 +1307,4 @@ with tab_config:
             re_load_global_config()
             st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
+        
