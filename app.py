@@ -117,10 +117,8 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 
 def get_db_connection():
     """Establece la conexión a la base de datos y asegura la existencia de la tabla."""
-    # Conexión al archivo SQLite (se crea si no existe)
     conn = sqlite3.connect(DB_FILE)
     
-    # Aseguramos la existencia de la tabla 'atenciones', agregando la columna 'id'
     conn.execute("""
         CREATE TABLE IF NOT EXISTS atenciones (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,9 +126,9 @@ def get_db_connection():
             Lugar TEXT,
             Item TEXT,
             Paciente TEXT,
-            "Método Pago" TEXT,
+            "Método Pago" TEXT,      -- ¡Con comillas!
             "Valor Bruto" INTEGER,
-            "Desc. Fijo Lugar" INTEGER,
+            "Desc. Fijo Lugar" INTEGER, -- ¡Con comillas!
             "Desc. Tarjeta" INTEGER,
             "Desc. Adicional" INTEGER,
             "Total Recibido" INTEGER
@@ -159,7 +157,8 @@ def insert_new_record(record_dict):
     """Inserta un nuevo registro en la tabla de atenciones."""
     conn = get_db_connection()
     
-    # Preparamos la consulta SQL
+    # SOLUCIÓN CLAVE: Forzamos comillas dobles (") alrededor de cada nombre de columna
+    # para manejar los espacios ("Método Pago", "Desc. Fijo Lugar", etc.).
     cols = ", ".join(f'"{k}"' for k in record_dict.keys())
     placeholders = ", ".join("?" * len(record_dict))
     
