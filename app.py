@@ -790,29 +790,34 @@ with tab_dashboard:
         
         st.subheader("Atenciones Registradas (✏️ Editar, 🗑️ Eliminar)")
 
-        # Títulos de columna con emojis
-        cols_title = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
+        # Títulos de columna con emojis (AJUSTADO PARA AÑADIR ITEM Y DESC. FIJO)
+        cols_title = st.columns([0.1, 0.1, 0.15, 0.15, 0.15, 0.25, 0.05, 0.05])
         cols_title[0].write("**Fecha**")
         cols_title[1].write("**Lugar**")
-        cols_title[2].write("**Líquido**")
-        cols_title[3].write("**Héroe**")
-        cols_title[4].write("**Editar**") 
-        cols_title[5].write("**Eliminar**") 
+        cols_title[2].write("📋 **Poción**") # NUEVA COLUMNA
+        cols_title[3].write("💔 **Tributo**") # NUEVA COLUMNA
+        cols_title[4].write("💎 **Líquido**")
+        cols_title[5].write("👤 **Héroe**")
+        cols_title[6].write("**E**") # Editar
+        cols_title[7].write("**X**") # Eliminar
         
         st.markdown("---") 
 
         # Iterar sobre las filas y crear los botones
         for index, row in df_display.iterrows():
             
-            cols = st.columns([0.15, 0.15, 0.15, 0.3, 0.1, 0.1])
+            # AJUSTADO PARA AÑADIR ITEM Y DESC. FIJO
+            cols = st.columns([0.1, 0.1, 0.15, 0.15, 0.15, 0.25, 0.05, 0.05])
             
             cols[0].write(row['Fecha'].strftime('%Y-%m-%d'))
             cols[1].write(row['Lugar'])
-            cols[2].write(format_currency(row['Total Recibido']))
-            cols[3].write(row['Paciente'])
+            cols[2].write(row['Ítem']) # Mostrar Ítem/Poción
+            cols[3].write(format_currency(row['Desc. Fijo Lugar'])) # Mostrar Tributo
+            cols[4].write(format_currency(row['Total Recibido']))
+            cols[5].write(row['Paciente'])
             
             # --- BOTÓN DE EDICIÓN ---
-            if cols[4].button("✏️", key=f"edit_{index}", help="Editar esta aventura"):
+            if cols[6].button("✏️", key=f"edit_{index}", help="Editar esta aventura"):
                 st.session_state.edit_index = index
                 st.session_state.edited_lugar_state = row['Lugar'] 
                 
@@ -823,7 +828,7 @@ with tab_dashboard:
                 st.rerun()
 
             # --- BOTÓN DE ELIMINACIÓN ---
-            if cols[5].button("🗑️", key=f"delete_{index}", help="Eliminar esta aventura (¡Cuidado con la magia negra!)"):
+            if cols[7].button("🗑️", key=f"delete_{index}", help="Eliminar esta aventura (¡Cuidado con la magia negra!)"):
                 st.session_state.atenciones_df = st.session_state.atenciones_df.drop(index, axis=0).reset_index(drop=True)
                 save_data(st.session_state.atenciones_df)
                 st.success(f"Aventura de {row['Paciente']} eliminada. Recargando el Libro...")
