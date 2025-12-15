@@ -1012,7 +1012,7 @@ with tab_dashboard:
                 with col_e2:
                     st.subheader("Ajustes Financieros")
                     
-                    # VALOR BRUTO - CORREGIDO: SE ELIMINÓ on_change
+                    # VALOR BRUTO
                     st.number_input(
                         "💰 Valor Bruto (Recompensa)", 
                         min_value=0, 
@@ -1023,7 +1023,7 @@ with tab_dashboard:
 
                     st.markdown("---")
 
-                    # DESCUENTO ADICIONAL (Editable) - CORREGIDO: SE ELIMINÓ on_change
+                    # DESCUENTO ADICIONAL (Editable)
                     st.number_input(
                         "✂️ Ajuste Extra (Desc. Adic.)", 
                         min_value=-500000, 
@@ -1072,17 +1072,18 @@ with tab_dashboard:
                     st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
 
 
-                # --- Botones de Control Final (Línea ~1080) ---
+                # --- Botones de Control Final (Línea ~1090) ---
                 st.markdown("---")
-                col_final1, col_final2, col_final3 = st.columns([0.6, 0.2, 0.2])
+                
+                # CORRECCIÓN DE COLUMNAS: Asegurar espacio para el botón de eliminar
+                col_final1, col_final2, col_final3 = st.columns([0.4, 0.3, 0.3])
                 
                 # Botón de Guardado general
                 with col_final1:
-                    # ESTA ES LA CORRECCIÓN CLAVE 1: Añadir la KEY explícita al botón de guardado principal
                     if st.form_submit_button(
                         "💾 Aplicar Cambios y Cerrar Edición", 
                         type="primary",
-                        key='btn_save_edit_form' # <--- KEY AGREGADA
+                        key='btn_save_edit_form' 
                     ):
                         new_total = save_edit_state_to_df()
                         st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
@@ -1093,11 +1094,11 @@ with tab_dashboard:
                 with col_final2:
                     st.form_submit_button("❌ Cerrar Edición", key='btn_close_edit_form', on_click=_cleanup_edit_state)
                     
-                # Botón de Eliminar (Línea 1093)
+                # Botón de Eliminar (Línea 1098, ahora visible y con Key dinámica)
                 with col_final3:
                     st.form_submit_button(
                         "🗑️ Eliminar", 
-                        key='btn_delete_form', # <--- KEY AGREGADA PREVIAMENTE
+                        key=f'btn_delete_form_{edited_id}', # Solución a la StreamlitAPIException
                         type="danger", 
                         help="Elimina permanentemente este registro.", 
                         on_click=delete_record_callback, 
