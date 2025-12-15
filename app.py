@@ -317,13 +317,16 @@ def _cleanup_edit_state():
         'original_desc_fijo_lugar', 'original_desc_tarjeta', 
         f'edit_lugar_{edited_id}', f'edit_item_{edited_id}', 
         f'edit_paciente_{edited_id}', f'edit_metodo_{edited_id}', 
-        f'edit_fecha_{edited_id}'
+        f'edit_fecha_{edited_id}',
+        f'btn_delete_form_{edited_id}',  # AÑADIDO: Clave del botón de eliminar
+        f'btn_close_edit_form_{edited_id}', # AÑADIDO: Clave del botón de cerrar
+        f'btn_save_edit_form_{edited_id}' # AÑADIDO: Clave del botón de guardar
     ]
     
     for key in keys_to_delete:
         if key in st.session_state: del st.session_state[key] 
         
-    st.session_state.edited_record_id = None 
+    st.session_state.edited_record_id = None # Asegurar que el ID principal se limpie
 
 
 def save_edit_state_to_df():
@@ -449,7 +452,8 @@ def delete_record_callback(record_id):
     if delete_record(record_id):
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
-        _cleanup_edit_state() # Limpiar estado de edición si se elimina el registro actual
+        st.session_state.edited_record_id = None # REFORZAR LIMPIEZA
+        _cleanup_edit_state() # LLAMAR A LA FUNCIÓN DE LIMPIEZA DE CLAVES
         st.success(f"Registro ID {record_id} eliminado exitosamente.")
         st.rerun() # FORZAR RERUN DESPUÉS DE ELIMINAR
     else:
@@ -458,8 +462,6 @@ def delete_record_callback(record_id):
 def edit_record_callback(record_id):
     """Callback para establecer el ID a editar y recargar la página."""
     st.session_state.edited_record_id = record_id
-    # IMPORTANTE: Eliminamos la llamada a _cleanup_edit_state() aquí.
-    # El formulario se debe limpiar solo al CERRAR/GUARDAR/ELIMINAR.
     st.rerun() # FORZAR RERUN INMEDIATO
 
 # --- CALLBACK DE SUBMIT DE FORMULARIO DE REGISTRO
@@ -907,7 +909,7 @@ with tab_dashboard:
             # Crear las columnas para la fila actual
             data_cols = st.columns(cols_widths)
 
-            # Botón de edición
+            # Botón de edición - CLAVE DINÁMICA ASEGURADA
             with data_cols[0]:
                 st.button("Editar ✏️", key=f"edit_btn_{row['id']}", on_click=edit_record_callback, args=(row['id'],))
             
