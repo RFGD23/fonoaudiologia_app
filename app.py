@@ -24,7 +24,6 @@ def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
     try:
         with open(filename, 'w') as f:
-            # Usamos `flush=True` para asegurar que el contenido se escribe al disco inmediatamente
             json.dump(data, f, indent=4, sort_keys=True)
             f.flush() 
     except Exception as e:
@@ -193,7 +192,8 @@ def delete_record(record_id):
     conn = get_db_connection()
     query = "DELETE FROM atenciones WHERE id = ?"
     try:
-        conn.execute(query, (record_id,))
+        # Aseguramos que el ID sea un entero
+        conn.execute(query, (int(record_id),)) 
         conn.commit()
         return True
     except Exception as e:
@@ -278,7 +278,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
 
 # ===============================================
 # 4. FUNCIONES DE CALLBACKS Y UTILIDADES
-# (Mantenido igual)
 # ===============================================
 
 def update_price_from_item_or_lugar():
@@ -322,7 +321,7 @@ def update_edit_price(edited_id):
         
     precio_base_sugerido_edit = PRECIOS_BASE_CONFIG.get(lugar_key_edit, {}).get(item_key_edit, 0)
     st.session_state[f'edit_valor_bruto_{edited_id}'] = int(precio_base_sugerido_edit)
-
+    
 def _cleanup_edit_state():
     """Limpia las claves de sesión relacionadas con el modo de edición para forzar el cierre del expander."""
     edited_id = st.session_state.edited_record_id
@@ -347,7 +346,7 @@ def _cleanup_edit_state():
         
     st.session_state.edited_record_id = None 
     st.session_state.input_id_edit = None 
-    st.session_state.input_id_delete = None # <--- LIMPIAR INPUT DE ELIMINACIÓN
+    st.session_state.input_id_delete = None 
 
 def save_edit_state_to_df():
     """
@@ -406,7 +405,7 @@ def save_edit_state_to_df():
     return 0 
 
 # =========================================================================
-# FUNCIONES DE CALLBACKS DE EDICIÓN (Mantenido igual)
+# FUNCIONES DE CALLBACKS DE EDICIÓN 
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
@@ -487,29 +486,27 @@ def edit_record_callback(record_id):
     st.session_state.edited_record_id = record_id
 
 # -------------------------------------------------------------
-# NUEVO CALLBACK PARA LA ELIMINACIÓN
+# CALLBACK PARA LA ELIMINACIÓN (SIMPLIFICADO)
 # -------------------------------------------------------------
 def delete_record_callback(record_id):
-    """Callback para eliminar un registro y actualizar el estado."""
+    """
+    Callback para eliminar un registro. 
+    Solo realiza la acción de DB y marca el estado. EL RERUN se hace fuera del callback.
+    """
     # 1. Si el registro a eliminar es el que se estaba editando, limpiar el estado de edición
     if st.session_state.edited_record_id == record_id:
         _cleanup_edit_state()
         
     # 2. Ejecutar la eliminación
     if delete_record(record_id):
-        st.session_state.deletion_pending_cleanup = True # Indica que se necesita recarga
-        st.toast(f"🗑️ Registro ID {record_id} eliminado exitosamente.", icon="✅")
+        # 🚨 CLAVE: Marcamos la eliminación exitosa, pero no recargamos ni hacemos rerun aquí
+        st.session_state.deletion_success_id = record_id 
     else:
         st.toast(f"🚨 Error al eliminar el registro ID {record_id}.", icon="❌")
 
-    # 3. Borrar caché de datos y forzar recarga de sesión
-    load_data_from_db.clear() 
-    st.session_state.atenciones_df = load_data_from_db() 
-    st.session_state.input_id_delete = None # Limpiar el input de eliminación
-    
-    st.rerun() # Forzar el refresco de la interfaz
-
-
+    # 3. Limpiar el input de eliminación para el próximo ciclo
+    st.session_state.input_id_delete = None 
+    # NO RERUN AQUÍ
 
 def submit_and_reset():
     """Ejecuta la lógica de guardado del formulario de registro y luego resetea el formulario."""
@@ -639,8 +636,13 @@ if 'atenciones_df' not in st.session_state:
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
     
+# Estado de limpieza de edición pendiente (mantenido)
 if 'deletion_pending_cleanup' not in st.session_state:
     st.session_state.deletion_pending_cleanup = False
+    
+# 🚨 NUEVO ESTADO PARA EL ÉXITO DE ELIMINACIÓN
+if 'deletion_success_id' not in st.session_state:
+    st.session_state.deletion_success_id = None 
     
 # Nuevo estado para el input de ID de edición
 if 'input_id_edit' not in st.session_state:
@@ -654,6 +656,20 @@ if 'input_id_delete' not in st.session_state:
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
+# 🚨 BLOQUE DE LIMPIEZA POST-ELIMINACIÓN (Ahora maneja el st.rerun)
+if st.session_state.deletion_success_id is not None:
+    deleted_id = st.session_state.deletion_success_id
+    with st.spinner(f"Recargando datos después de eliminar ID {deleted_id}..."):
+        # Limpiamos caché y recargamos datos para reflejar el cambio
+        load_data_from_db.clear() 
+        st.session_state.atenciones_df = load_data_from_db() 
+        
+        # Limpiamos el estado y forzamos el rerun
+        st.session_state.deletion_success_id = None
+        st.toast(f"🗑️ Registro ID {deleted_id} eliminado exitosamente y datos recargados.", icon="✅")
+        st.rerun() 
+        
+# Bloque de limpieza de edición (mantenido)
 if st.session_state.deletion_pending_cleanup:
     with st.spinner("Limpiando estado y recargando la aplicación..."):
         _cleanup_edit_state() 
@@ -1104,7 +1120,7 @@ with tab_dashboard:
                     min_value=min_id, 
                     max_value=max_id, 
                     step=1, 
-                    value=int(min_id) if not df.empty else None, 
+                    value=int(min_id) if not df.empty and st.session_state.input_id_edit is None else st.session_state.input_id_edit, 
                     key='input_id_edit', 
                     label_visibility="visible"
                 )
@@ -1130,7 +1146,7 @@ with tab_dashboard:
                     min_value=min_id, 
                     max_value=max_id, 
                     step=1, 
-                    value=int(min_id) if not df.empty else None, 
+                    value=int(min_id) if not df.empty and st.session_state.input_id_delete is None else st.session_state.input_id_delete, 
                     key='input_id_delete',
                     label_visibility="visible"
                 )
@@ -1150,10 +1166,12 @@ with tab_dashboard:
                             type="danger",
                             use_container_width=True
                         ):
-                            delete_record_callback(id_to_delete)
-                            # Nota: El st.rerun() está dentro de delete_record_callback
-                elif id_to_delete is not None:
-                     st.error("ID no válido.")
+                            # Llama al callback simplificado (no hace rerun)
+                            delete_record_callback(id_to_delete) 
+                            # El rerun se hace automáticamente al inicio del script 
+                            # si deletion_success_id es True
+                elif id_to_delete is not None and id_to_delete in df['ID'].values: # No debería pasar, pero por seguridad
+                    st.error("ID no válido.")
                      
             if id_to_edit is not None and not is_valid_id_edit and st.session_state.edited_record_id is None:
                  st.info(f"El ID {int(id_to_edit)} no existe para editar.")
