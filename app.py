@@ -145,7 +145,7 @@ def load_data_from_db():
     # Leemos la tabla, ordenando por ID descendente
     df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id DESC", conn)
     conn.close()
-    
+    # ... (el resto del código sigue igual) ...
     # Aseguramos que la fecha sea datetime si hay datos
     if not df.empty:
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d')
@@ -157,8 +157,8 @@ def insert_new_record(record_dict):
     """Inserta un nuevo registro en la tabla de atenciones."""
     conn = get_db_connection()
     
-    # SOLUCIÓN CLAVE: Forzamos comillas dobles (") alrededor de cada nombre de columna
-    # para manejar los espacios ("Método Pago", "Desc. Fijo Lugar", etc.).
+    # 💡 CORRECCIÓN CLAVE: Forzamos comillas dobles (") alrededor de cada nombre de columna
+    # (p. ej., 'Método Pago' se convierte en "Método Pago")
     cols = ", ".join(f'"{k}"' for k in record_dict.keys())
     placeholders = ", ".join("?" * len(record_dict))
     
@@ -177,7 +177,8 @@ def update_existing_record(record_dict):
     # El ID es necesario para el WHERE, lo separamos
     record_id = record_dict.pop('id') 
     
-    # Construimos la parte SET de la consulta (col1=?, col2=?)
+    # 💡 CORRECCIÓN CLAVE: Las columnas en SET también deben ir entre comillas
+    # Construimos la parte SET de la consulta ("col1" = ?, "col2" = ?)
     set_clauses = [f'"{k}" = ?' for k in record_dict.keys()]
     set_clause = ", ".join(set_clauses)
     
