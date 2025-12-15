@@ -452,10 +452,7 @@ def update_edit_tributo(edited_id):
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def delete_record_callback(record_id):
-    """
-    Función de eliminación. Dejada en el código pero NO invocada por ningún widget 
-    para evitar conflictos, manteniendo la función para referencia futura.
-    """
+    """Función de eliminación."""
     if delete_record(record_id):
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
@@ -466,7 +463,7 @@ def delete_record_callback(record_id):
 
 
 def edit_record_callback(record_id):
-    """Callback para establecer el ID a editar. Se eliminó st.rerun()."""
+    """Callback para establecer el ID a editar."""
     # LIMPIEZA PREVENTIVA: Si ya hay un formulario de edición abierto, límpialo primero.
     if st.session_state.edited_record_id is not None:
         _cleanup_edit_state() 
@@ -489,7 +486,7 @@ def submit_and_reset():
         
     paciente_nombre_guardar = st.session_state.form_paciente 
     
-    resultados_finales = calcular_ingreso(
+    resultados_calculados = calcular_ingreso( # Renombrado para evitar conflicto con la variable 'resultados'
         st.session_state.form_lugar, 
         st.session_state.form_item, 
         st.session_state.form_metodo_pago, 
@@ -504,11 +501,11 @@ def submit_and_reset():
         "Item": st.session_state.form_item, # USAMOS 'Item' (SIN TILDE)
         "Paciente": paciente_nombre_guardar, 
         "Método Pago": st.session_state.form_metodo_pago,
-        "Valor Bruto": resultados_finales['valor_bruto'],
-        "Desc. Fijo Lugar": resultados_finales['desc_fijo_lugar'],
-        "Desc. Tarjeta": resultados_finales['desc_tarjeta'],
+        "Valor Bruto": resultados_calculados['valor_bruto'],
+        "Desc. Fijo Lugar": resultados_calculados['desc_fijo_lugar'],
+        "Desc. Tarjeta": resultados_calculados['desc_tarjeta'],
         "Desc. Adicional": st.session_state.form_desc_adic_input, 
-        "Total Recibido": resultados_finales['total_recibido']
+        "Total Recibido": resultados_calculados['total_recibido']
     }
     
     insert_new_record(nueva_atencion)
@@ -516,7 +513,7 @@ def submit_and_reset():
     load_data_from_db.clear() 
     st.session_state.atenciones_df = load_data_from_db() 
     
-    st.session_state['save_status'] = f"🎉 ¡Aventura registrada para {paciente_nombre_guardar}! El tesoro es {format_currency(resultados['total_recibido'])}"
+    st.session_state['save_status'] = f"🎉 ¡Aventura registrada para {paciente_nombre_guardar}! El tesoro es {format_currency(resultados_calculados['total_recibido'])}"
 
     # --- LÓGICA DE REINICIO MANUAL DE TODOS LOS WIDGETS ---
     default_lugar = LUGARES[0] if LUGARES else ''
@@ -834,16 +831,27 @@ with tab_dashboard:
     # ===============================================
     st.header("✨ Mapa y Brújula de Ingresos (Dashboard)")
 
-    df = st.session_state.atenciones_df
-
+    df = st.session_state.atenciones_df.copy() # Usar una copia para el dashboard
+    
     if not df.empty:
-        if 'Item' in df.columns and 'Ítem' not in df.columns:
-            df = df.rename(columns={'Item': 'Ítem'})
-            
-        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
+        # Renombrar columnas para la visualización
+        df = df.rename(columns={
+            'id': 'ID',
+            'Desc. Fijo Lugar': 'Desc. Tributo',
+            'Desc. Tarjeta': 'Desc. Tarjeta',
+            'Desc. Adicional': 'Desc. Ajuste',
+            'Total Recibido': 'Tesoro Líquido',
+        })
+        
+        # Ocultar algunas columnas internas o redundantes en la vista principal
+        columns_to_show = ['ID', 'Fecha', 'Lugar', 'Ítem', 'Paciente', 'Método Pago', 'Valor Bruto', 'Desc. Tributo', 'Desc. Ajuste', 'Tesoro Líquido']
+        df_display = df[columns_to_show]
+        
+        # Formatear la columna de fecha para la visualización
+        df_display['Fecha'] = df_display['Fecha'].dt.strftime('%Y-%m-%d')
         
         # --- MÉTRICAS PRINCIPALES ---
-        total_ingreso = df['Total Recibido'].sum()
+        total_ingreso = df['Tesoro Líquido'].sum()
         total_atenciones = len(df)
         
         col_m1, col_m2 = st.columns(2)
@@ -861,10 +869,10 @@ with tab_dashboard:
 
         # Gráfico de Ingreso por Lugar (Pie Chart)
         with col_g1:
-            df_lugar = df.groupby('Lugar')['Total Recibido'].sum().reset_index()
+            df_lugar = df.groupby('Lugar')['Tesoro Líquido'].sum().reset_index()
             fig_lugar = px.pie(
                 df_lugar, 
-                values='Total Recibido', 
+                values='Tesoro Líquido', 
                 names='Lugar', 
                 title='Distribución por Castillo/Lugar',
                 hole=.3
@@ -874,13 +882,13 @@ with tab_dashboard:
 
         # Gráfico de Ingreso por Ítem (Bar Chart)
         with col_g2:
-            df_item = df.groupby('Ítem')['Total Recibido'].sum().reset_index().sort_values(by='Total Recibido', ascending=False)
+            df_item = df.groupby('Ítem')['Tesoro Líquido'].sum().reset_index().sort_values(by='Tesoro Líquido', ascending=False)
             fig_item = px.bar(
                 df_item.head(10), 
                 x='Ítem', 
-                y='Total Recibido', 
+                y='Tesoro Líquido', 
                 title='Top 10 Pociones/Procedimientos (Ingreso Líquido)',
-                labels={'Total Recibido': 'Tesoro Líquido', 'Ítem': 'Ítem'}
+                labels={'Tesoro Líquido': 'Tesoro Líquido', 'Ítem': 'Ítem'}
             )
             fig_item.update_layout(xaxis={'categoryorder':'total descending'})
             st.plotly_chart(fig_item, use_container_width=True)
@@ -890,16 +898,16 @@ with tab_dashboard:
         # Gráfico de Tendencia Semanal
         st.subheader("Tendencia Histórica del Tesoro")
         df_grouped = df.groupby(df['Fecha'].dt.to_period('W')).agg(
-            {'Total Recibido': 'sum'}
+            {'Tesoro Líquido': 'sum'}
         ).reset_index()
         df_grouped['Fecha'] = df_grouped['Fecha'].dt.to_timestamp()
         
         fig = px.line(
             df_grouped, 
             x='Fecha', 
-            y='Total Recibido', 
+            y='Tesoro Líquido', 
             title='Tesoro Líquido Acumulado por Semana',
-            labels={'Total Recibido': 'Tesoro Líquido', 'Fecha': 'Semana'},
+            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Fecha': 'Semana'},
             line_shape='spline'
         )
         fig.update_layout(xaxis_tickformat="%Y-%m-%d")
@@ -907,30 +915,33 @@ with tab_dashboard:
         
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
-        
+        st.subheader("Historial Completo de Aventuras (Registros)")
+
         edited_id = st.session_state.edited_record_id
         
         # =================================================================
-        # 🚨 LÓGICA DE AISLAMIENTO: O SE DIBUJA LA TABLA, O EL FORMULARIO
+        # LÓGICA DE AISLAMIENTO: O SE DIBUJA LA TABLA, O EL FORMULARIO
         # =================================================================
         
-        if edited_id is not None and edited_id in df['id'].values:
+        if edited_id is not None and edited_id in df['ID'].values: # ¡Corregido: usar 'ID' en el DF filtrado!
             
             # -------------------------------------------------------------
             # DIBUJAR FORMULARIO DE EDICIÓN
             # -------------------------------------------------------------
             
             # 1. Cargar la fila a editar
-            edit_row = df[df['id'] == edited_id].iloc[0]
+            edit_row = df[df['ID'] == edited_id].iloc[0]
             
             # 2. 🚨 CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO 🚨
+            # ... (Toda la lógica de inicialización y dibujo del formulario de edición se mantiene aquí) ...
+            
             if f'edit_paciente_{edited_id}' not in st.session_state:
                  st.session_state[f'edit_paciente_{edited_id}'] = edit_row['Paciente']
                  st.session_state[f'edit_valor_bruto_{edited_id}'] = edit_row['Valor Bruto']
-                 st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Adicional']
-                 st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
+                 st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Ajuste'] # Usar Desc. Ajuste
+                 st.session_state.original_desc_fijo_lugar = edit_row['Desc. Tributo'] # Usar Desc. Tributo
                  st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
-                 st.session_state[f'edit_fecha_{edited_id}'] = edit_row['Fecha'].date()
+                 st.session_state[f'edit_fecha_{edited_id}'] = edit_row['Fecha'].date() # La fecha en el DF ya es un string formateado, necesitamos el date object original
                  st.session_state[f'edit_lugar_{edited_id}'] = edit_row['Lugar']
                  st.session_state[f'edit_item_{edited_id}'] = edit_row['Ítem']
                  st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
@@ -948,7 +959,13 @@ with tab_dashboard:
                 st.subheader("Datos Clave")
                 
                 # FECHA (st.date_input) - CLAVE DINÁMICA
-                st.date_input("🗓️ Fecha de Atención", st.session_state[f'edit_fecha_{edited_id}'], key=f"edit_fecha_{edited_id}")
+                # Reconvertir de string YYYY-MM-DD a date object si es necesario, si no, usar el date object que ya debería estar en state.
+                if isinstance(st.session_state[f'edit_fecha_{edited_id}'], str):
+                    fecha_display = date.fromisoformat(st.session_state[f'edit_fecha_{edited_id}'])
+                else:
+                    fecha_display = st.session_state[f'edit_fecha_{edited_id}']
+                    
+                st.date_input("🗓️ Fecha de Atención", fecha_display, key=f"edit_fecha_{edited_id}")
                 
                 # LUGAR (st.selectbox) - CLAVE DINÁMICA
                 try:
@@ -1022,7 +1039,7 @@ with tab_dashboard:
                 st.subheader("Estado Actual (No Editable)")
                 
                 # Usamos los valores originales/recalculados (de los callbacks)
-                current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Fijo Lugar'])
+                current_desc_fijo = st.session_state.get('original_desc_fijo_lugar', edit_row['Desc. Tributo'])
                 current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta'])
                 
                 # Calcular el total líquido temporal (Vista Previa)
@@ -1041,21 +1058,22 @@ with tab_dashboard:
                 st.markdown("---")
                 
                 st.success(f"### 💎 Tesoro Líquido (Vista Previa): {format_currency(total_liquido_live)}")
-                st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
+                st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Tesoro Líquido'])}") # Usar Tesoro Líquido
 
 
             # --- Botones de Control Final ---
             st.markdown("---")
             
-            # Se usan solo dos columnas ahora, ya que se eliminó el botón de eliminar
-            col_final1, col_final2 = st.columns([0.6, 0.4])
+            # Se usan solo dos columnas ahora, ya que se eliminó el botón de borrar
+            col_final1, col_final2, col_final3 = st.columns([0.6, 0.2, 0.2])
             
             # Botón de Guardado general
             with col_final1:
                 if st.button(
                     "💾 Aplicar Cambios y Cerrar Edición", 
                     type="primary",
-                    key=f'btn_save_edit_form_{edited_id}' 
+                    key=f'btn_save_edit_form_{edited_id}', 
+                    use_container_width=True
                 ):
                     new_total = save_edit_state_to_df()
                     st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
@@ -1065,11 +1083,86 @@ with tab_dashboard:
             # Botón de Cierre Manual
             with col_final2:
                 st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, use_container_width=True)
+
+            # Botón de Eliminar
+            with col_final3:
+                st.button("🗑️ Eliminar", key=f'btn_delete_form_{edited_id}', on_click=delete_record_callback, args=(edited_id,), type="danger", use_container_width=True)
+
+
+        # =================================================================
+        # 🚨 NUEVA SECCIÓN: DIBUJAR TABLA DE DATOS CUANDO NO HAY EDICIÓN
+        # =================================================================
+        else: 
+            st.markdown("### 🗺️ Registros Detallados")
+            # Usar la columna de acciones como la última
+            df_with_actions = df_display.copy()
+
+            # Asegurar que la columna de acciones exista antes de agregarla al editor
+            if 'Acciones' not in df_with_actions.columns:
+                df_with_actions.insert(len(df_with_actions.columns), 'Acciones', '')
+
+
+            # DIBUJAR LA TABLA USANDO data_editor PARA AÑADIR ACCIONES AL FINAL
+            config_columns = {
+                'ID': st.column_config.NumberColumn(width='small', help="Identificador único del registro", disabled=True),
+                'Fecha': st.column_config.DateColumn(format="YYYY-MM-DD", disabled=True),
+                'Lugar': st.column_config.TextColumn(disabled=True),
+                'Ítem': st.column_config.TextColumn(disabled=True),
+                'Paciente': st.column_config.TextColumn(disabled=True),
+                'Método Pago': st.column_config.TextColumn(disabled=True),
+                'Valor Bruto': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
+                'Desc. Tributo': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
+                'Desc. Ajuste': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", disabled=True),
+                'Tesoro Líquido': st.column_config.NumberColumn(format=format_currency(0)[0] + "%d", help="Total final recibido después de descuentos y ajustes", disabled=True),
+                # Columna de Acciones: Se necesita para renderizar botones, aunque no sea editable directamente
+                'Acciones': st.column_config.TextColumn(width='small', disabled=True) 
+            }
+            
+            # Ocultar la columna de Desc. Tarjeta, que ya no está en df_display
+            
+            # 1. Dibujar el editor de datos (que es solo una tabla de visualización con acciones)
+            st.data_editor(
+                df_with_actions.sort_values(by='ID', ascending=False), # Mostrar los más nuevos primero
+                column_config=config_columns,
+                hide_index=True,
+                use_container_width=True,
+                num_rows='fixed', 
+                key='ingresos_viewer'
+            )
+
+            # 2. Dibujar los botones de acción Fila por Fila (fuera del data_editor)
+            st.markdown("#### Acciones por Registro")
+            st.markdown("---")
+            
+            # Usamos st.columns para alinear los botones debajo de la tabla
+            for index, row in df.sort_values(by='ID', ascending=False).iterrows():
+                record_id = row['ID']
                 
-            # 🚨 El espacio donde estaba el botón de eliminación queda vacío para mantener la estabilidad. 🚨
+                # Crear las columnas para la fila de botones (ID + Botones)
+                col_id, col_edit, col_delete, col_spacer = st.columns([0.15, 0.15, 0.15, 0.55]) 
+                
+                with col_id:
+                    st.markdown(f"**ID:** `{record_id}`")
+                
+                with col_edit:
+                    st.button("Editar ✏️", 
+                              key=f'btn_edit_{record_id}', 
+                              on_click=edit_record_callback, 
+                              args=(record_id,), 
+                              use_container_width=True)
+                
+                with col_delete:
+                     st.button("Eliminar 🗑️", 
+                               key=f'btn_delete_{record_id}', 
+                               on_click=delete_record_callback, 
+                               args=(record_id,), 
+                               type='danger',
+                               use_container_width=True)
+                
+                st.markdown("---") # Separador visual entre filas
+
         
         # =================================================================
-
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
@@ -1100,7 +1193,7 @@ with tab_config:
             use_container_width=True,
             num_rows="dynamic",
             column_config={
-                "Precio Sugerido": st.column_config.NumberColumn(format="$%d")
+                "Precio Sugerido": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d")
             }
         )
         
@@ -1136,7 +1229,7 @@ with tab_config:
             use_container_width=True,
             num_rows="dynamic",
             column_config={
-                "Desc. Fijo Base": st.column_config.NumberColumn(format="$%d")
+                "Desc. Fijo Base": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d")
             }
         )
         
@@ -1173,7 +1266,7 @@ with tab_config:
                 use_container_width=True,
                 num_rows="dynamic",
                 column_config={
-                    "Tributo Diario": st.column_config.NumberColumn(format="$%d"),
+                    "Tributo Diario": st.column_config.NumberColumn(format=format_currency(0)[0] + "%d"),
                     "Día": st.column_config.SelectboxColumn(options=DIAS_SEMANA)
                 }
             )
