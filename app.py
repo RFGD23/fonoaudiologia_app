@@ -134,7 +134,7 @@ def get_db_connection():
 def load_data_from_db():
     """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID ASC (1, 2, 3...)**."""
     conn = get_db_connection()
-    # CAMBIO AQUÍ: ORDENADO POR ID ASC para mostrar la secuencia correcta.
+    # CORREGIDO: ORDENADO POR ID ASC para mostrar la secuencia correcta (1, 2, 3...)
     df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id ASC", conn) 
     conn.close()
     
@@ -420,7 +420,7 @@ def update_edit_tributo():
              try: 
                  regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
                  if regla_especial_monto is not None:
-                     desc_fijo_calc = regla_especial_monto
+                     desc_fijo_calc = regla_especial_mount
              except Exception:
                  pass
              
@@ -900,7 +900,7 @@ with tab_dashboard:
         # 2. Encabezados de la tabla
         header_cols = st.columns(cols_widths)
         for i, name in enumerate(cols_names):
-            # Usamos un span para aplicar el estilo de encabezado definido en el CSS (ahora transparente)
+            # CORRECCIÓN DE ESTILO: Usamos un span para aplicar el estilo de encabezado definido en el CSS (ahora transparente)
             header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
         st.markdown("---")
 
@@ -1088,10 +1088,16 @@ with tab_dashboard:
                 with col_final2:
                     st.form_submit_button("❌ Cerrar Edición", key='btn_close_edit_form', on_click=_cleanup_edit_state)
                     
-                # Botón de Eliminar
+                # Botón de Eliminar CORREGIDO
                 with col_final3:
-                    if st.form_submit_button("🗑️ Eliminar", type="danger", help="Elimina permanentemente este registro."):
-                        delete_record_callback(edited_id)
+                    st.form_submit_button(
+                        "🗑️ Eliminar", 
+                        key='btn_delete_form', # <--- CORRECCIÓN CLAVE: Clave única
+                        type="danger", 
+                        help="Elimina permanentemente este registro.", 
+                        on_click=delete_record_callback, # <--- CORRECCIÓN CLAVE: Usamos on_click
+                        args=(edited_id,)
+                    )
         
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
