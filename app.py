@@ -318,9 +318,9 @@ def _cleanup_edit_state():
         f'edit_lugar_{edited_id}', f'edit_item_{edited_id}', 
         f'edit_paciente_{edited_id}', f'edit_metodo_{edited_id}', 
         f'edit_fecha_{edited_id}',
-        f'btn_delete_form_{edited_id}',  # AÑADIDO: Clave del botón de eliminar
-        f'btn_close_edit_form_{edited_id}', # AÑADIDO: Clave del botón de cerrar
-        f'btn_save_edit_form_{edited_id}' # AÑADIDO: Clave del botón de guardar
+        f'btn_delete_form_{edited_id}',  # Clave del botón de eliminar
+        f'btn_close_edit_form_{edited_id}', # Clave del botón de cerrar
+        f'btn_save_edit_form_{edited_id}' # Clave del botón de guardar
     ]
     
     for key in keys_to_delete:
@@ -459,10 +459,20 @@ def delete_record_callback(record_id):
     else:
         st.error(f"No se pudo eliminar el registro ID {record_id}.")
 
+# *******************************************************************
+# MODIFICACIÓN CRÍTICA IMPLEMENTADA AQUÍ (Línea ~865)
+# *******************************************************************
 def edit_record_callback(record_id):
     """Callback para establecer el ID a editar y recargar la página."""
+    # LIMPIEZA PREVENTIVA: Si ya hay un formulario de edición abierto, límpialo primero.
+    if st.session_state.edited_record_id is not None:
+        _cleanup_edit_state() 
+        
     st.session_state.edited_record_id = record_id
     st.rerun() # FORZAR RERUN INMEDIATO
+# *******************************************************************
+# FIN DE LA MODIFICACIÓN CRÍTICA
+# *******************************************************************
 
 # --- CALLBACK DE SUBMIT DE FORMULARIO DE REGISTRO
 def submit_and_reset():
@@ -952,10 +962,8 @@ with tab_dashboard:
                  st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
             
             
-            # 3. Dibujar el formulario - AHORA FUERA DE st.form
+            # 3. Dibujar el formulario
             st.markdown(f"## ✏️ Editando Registro ID: {edited_id} ({edit_row['Paciente']})")
-            
-            # REEMPLAZADO: with st.form(key=f"edit_form_{edited_id}"):
             
             col_e1, col_e2, col_e3 = st.columns([1, 1, 1.2]) 
             
@@ -1008,7 +1016,7 @@ with tab_dashboard:
                     step=1000, 
                     key=f"edit_valor_bruto_{edited_id}",
                 )
-                # BOTÓN DE ACTUALIZAR PRECIO - CAMBIADO a st.button
+                # BOTÓN DE ACTUALIZAR PRECIO
                 st.button("🔄 Actualizar a Precio Base Sugerido", key=f'btn_update_price_form_{edited_id}', on_click=update_edit_bruto_price, args=(edited_id,), use_container_width=True)
 
                 st.markdown("---")
@@ -1023,7 +1031,7 @@ with tab_dashboard:
                 
                 st.markdown("---")
                 
-                # Botones de Recálculo de Tributo y Tarjeta - CAMBIADO a st.button
+                # Botones de Recálculo de Tributo y Tarjeta
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
                     # RECALCULAR TRIBUTO
@@ -1062,7 +1070,7 @@ with tab_dashboard:
                 st.error(f"**Total Guardado Anterior:** {format_currency(edit_row['Total Recibido'])}")
 
 
-            # --- Botones de Control Final (Línea ~1109) - CAMBIADO a st.button ---
+            # --- Botones de Control Final (Línea ~1089) ---
             st.markdown("---")
             
             # CORRECCIÓN DE COLUMNAS: Asegurar espacio para el botón de eliminar
@@ -1070,7 +1078,7 @@ with tab_dashboard:
             
             # Botón de Guardado general
             with col_final1:
-                if st.button( # CAMBIADO a st.button
+                if st.button(
                     "💾 Aplicar Cambios y Cerrar Edición", 
                     type="primary",
                     key=f'btn_save_edit_form_{edited_id}' 
@@ -1082,11 +1090,11 @@ with tab_dashboard:
 
             # Botón de Cierre Manual
             with col_final2:
-                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state) # CAMBIADO a st.button
+                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state)
                 
             # Botón de Eliminar
             with col_final3:
-                st.button( # CAMBIADO a st.button
+                st.button( # Línea 1089 (Ahora limpia)
                     "🗑️ Eliminar", 
                     key=f'btn_delete_form_{edited_id}', 
                     type="danger", 
@@ -1214,7 +1222,7 @@ with tab_config:
                         new_reglas_config[lugar] = {}
                         
                     if dia:
-                        new_reglas_config[lugar][dia] = monto
+                            new_reglas_config[lugar][dia] = monto
                         
                 save_config(new_reglas_config, REGLAS_FILE)
                 re_load_global_config()
