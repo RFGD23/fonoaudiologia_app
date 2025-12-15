@@ -301,10 +301,10 @@ def _cleanup_edit_state():
 # --------------------------------------------------------------------------
 
 
-# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO Y time.sleep) ---
+# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO Y BANDERA) ---
 
 def update_edit_bruto_price():
-    """Callback: Actualiza el Valor Bruto, guarda, notifica Y CIERRA."""
+    """Callback: Actualiza el Valor Bruto, guarda, notifica Y CIERRA (usando bandera)."""
     lugar_edit = st.session_state.edit_lugar.upper()
     item_edit = st.session_state.edit_item
     
@@ -317,13 +317,12 @@ def update_edit_bruto_price():
     
     st.success(f"Valor Bruto actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
     
-    # 3. CIERRE FORZADO CON PAUSA
+    # 3. CIERRE FORZADO CON BANDERA
     _cleanup_edit_state()
-    time.sleep(0.5) # Pausa para evitar el warning 'no-op'
-    st.rerun() 
+    st.session_state.rerun_after_edit = True # <-- ACTIVAR BANDERA
 
 def update_edit_desc_tarjeta():
-    """Callback: Recalcula y actualiza el Desc. Tarjeta, guarda, notifica Y CIERRA."""
+    """Callback: Recalcula y actualiza el Desc. Tarjeta, guarda, notifica Y CIERRA (usando bandera)."""
     comision_pct_actual = COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)
     valor_bruto_actual = st.session_state.edit_valor_bruto
     nuevo_desc_tarjeta = int(valor_bruto_actual * comision_pct_actual)
@@ -336,13 +335,12 @@ def update_edit_desc_tarjeta():
     
     st.success(f"Desc. Tarjeta actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
     
-    # 3. CIERRE FORZADO CON PAUSA
+    # 3. CIERRE FORZADO CON BANDERA
     _cleanup_edit_state()
-    time.sleep(0.5) # Pausa para evitar el warning 'no-op'
-    st.rerun() 
+    st.session_state.rerun_after_edit = True # <-- ACTIVAR BANDERA
 
 def update_edit_tributo():
-    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar), guarda, notifica Y CIERRA."""
+    """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar), guarda, notifica Y CIERRA (usando bandera)."""
     current_lugar_upper = st.session_state.edit_lugar 
     
     try:
@@ -368,10 +366,9 @@ def update_edit_tributo():
     
     st.success(f"Tributo actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
     
-    # 3. CIERRE FORZADO CON PAUSA
+    # 3. CIERRE FORZADO CON BANDERA
     _cleanup_edit_state()
-    time.sleep(0.5) # Pausa para evitar el warning 'no-op'
-    st.rerun() 
+    st.session_state.rerun_after_edit = True # <-- ACTIVAR BANDERA
 
 # --- Fin de Funciones de Callback para Botones de Edición ---
 
@@ -483,6 +480,19 @@ st.set_page_config(
 )
 
 set_dark_mode_theme()
+
+# ====================================================================
+# *** LÓGICA DE REINICIO DE BANDERA PARA CALLBACKS DE EDICIÓN ***
+# ====================================================================
+if 'rerun_after_edit' not in st.session_state:
+    st.session_state.rerun_after_edit = False
+
+if st.session_state.rerun_after_edit:
+    st.session_state.rerun_after_edit = False # Resetea la bandera inmediatamente
+    st.rerun() # Ejecuta el reinicio FUERA del callback
+
+# ====================================================================
+
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
@@ -1008,6 +1018,7 @@ with tab_dashboard:
         except KeyError:
             st.error("Error: El índice de la fila a editar no fue encontrado.")
             _cleanup_edit_state()
+            st.session_state.rerun_after_edit = True # ACTIVA BANDERA
             st.rerun()
 
         if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
@@ -1088,7 +1099,7 @@ with tab_dashboard:
                         on_change=force_recalculate 
                     )
                 
-                # --- BOTÓN DE RECALCULAR VALOR BRUTO (Ahora guarda automáticamente y cierra) ---
+                # --- BOTÓN DE RECALCULAR VALOR BRUTO (Ahora guarda automáticamente y activa la bandera) ---
                 with col_vb_btn:
                     st.button(
                         "🔄 Actualizar Base", 
@@ -1119,7 +1130,7 @@ with tab_dashboard:
                 st.markdown("---") 
                 st.markdown("### 🛠️ Recalcular Reducciones")
 
-                # --- DESCUENTO TARJETA Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente y cierra) ---
+                # --- DESCUENTO TARJETA Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente y activa la bandera) ---
                 col_tarjeta_text, col_tarjeta_btn = st.columns([0.65, 0.35])
                 
                 with col_tarjeta_text:
@@ -1134,7 +1145,7 @@ with tab_dashboard:
                         on_click=update_edit_desc_tarjeta
                     )
 
-                # --- TRIBUTO Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente y cierra) ---
+                # --- TRIBUTO Y BOTÓN DE ACTUALIZACIÓN (Ahora guarda automáticamente y activa la bandera) ---
                 col_tributo_text, col_tributo_btn = st.columns([0.65, 0.35])
                 
                 # LÓGICA DE ETIQUETADO DEL TRIBUTO EN EDICIÓN
@@ -1180,18 +1191,20 @@ with tab_dashboard:
             # --- BOTONES DE ACCIÓN ---
             col_actions = st.columns([1, 1])
             
-            # EL BOTÓN "GUARDAR EDICIÓN" AHORA SOLO CIERRA EL EXPANDER Y LIMPIA EL ESTADO
+            # EL BOTÓN "GUARDAR EDICIÓN" CIERRA EL EXPANDER Y ACTIVA LA BANDERA
             if col_actions[0].button("💾 Guardar Edición", use_container_width=True, type="primary", key="save_edit"):
                 
                 # Limpieza y Cierre (La persistencia ya ocurrió con los botones de actualización)
                 _cleanup_edit_state()
                 st.success("✅ Aventura editada y tesoro recalculado.") 
+                st.session_state.rerun_after_edit = True # <-- ACTIVA BANDERA
                 st.rerun()
 
             if col_actions[1].button("❌ Cancelar Edición", use_container_width=True, key="cancel_edit"):
                 
                 # Limpieza y Cierre (Descartando cualquier edición no guardada por los botones de actualización)
                 _cleanup_edit_state()
+                st.session_state.rerun_after_edit = True # <-- ACTIVA BANDERA
                 st.rerun()
                 
 with tab_config:
@@ -1256,7 +1269,7 @@ with tab_config:
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Precios base actualizados correctamente. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
-                time.sleep(4)
+                st.session_state.rerun_after_edit = True # ACTIVA BANDERA
                 st.rerun()
                 
             except Exception as e:
@@ -1306,7 +1319,7 @@ with tab_config:
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Descuentos fijos actualizados correctamente. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
-                time.sleep(4)
+                st.session_state.rerun_after_edit = True # ACTIVA BANDERA
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar descuentos fijos: {e}")
@@ -1362,7 +1375,7 @@ with tab_config:
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Reglas de descuento por día actualizadas. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
-                time.sleep(4)
+                st.session_state.rerun_after_edit = True # ACTIVA BANDERA
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar reglas: {e}")
@@ -1417,7 +1430,7 @@ with tab_config:
                 # FORZAR RECARGA DE CONFIGURACIÓN Y RERUN
                 re_load_global_config() 
                 st.success("✅ Comisiones de pago actualizadas correctamente. **⚠️ Nota:** Los cambios de configuración solo aplican a las aventuras que se registren o editen a partir de este momento. Los registros históricos no se modifican.")
-                time.sleep(4)
+                st.session_state.rerun_after_edit = True # ACTIVA BANDERA
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar comisiones: {e}")
