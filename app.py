@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import json 
-import time 
+import time # <--- IMPORTACIÓN AÑADIDA
 import plotly.express as px
 import numpy as np 
 import sqlite3 
@@ -23,7 +23,9 @@ def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
     try:
         with open(filename, 'w') as f:
+            # Usamos `flush=True` para asegurar que el contenido se escribe al disco inmediatamente
             json.dump(data, f, indent=4, sort_keys=True)
+            f.flush() 
     except Exception as e:
         st.error(f"Error al guardar el archivo {filename}: {e}")
 
@@ -370,6 +372,7 @@ def save_edit_state_to_df():
         desc_adicional_final = 0
         
     # Obtener los descuentos actualizados (o los originales si no se recalcularon)
+    # Se asegura que la clave exista antes de intentar leerla
     desc_fijo_final = int(st.session_state.get('original_desc_fijo_lugar', 0))
     desc_tarjeta_final = int(st.session_state.get('original_desc_tarjeta', 0))
     
@@ -403,7 +406,7 @@ def save_edit_state_to_df():
     return 0 
 
 # =========================================================================
-# 🚨 MODIFICACIÓN: Eliminación de st.rerun() dentro de los Callbacks 🚨
+# FUNCIONES DE CALLBACKS DE EDICIÓN
 # =========================================================================
 
 def update_edit_bruto_price(edited_id):
@@ -422,9 +425,6 @@ def update_edit_bruto_price(edited_id):
     
     if new_total > 0:
         st.toast(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🔄")
-        # ❌ ELIMINADO: st.rerun()
-    else:
-        st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def update_edit_desc_tarjeta(edited_id):
     """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
@@ -442,9 +442,6 @@ def update_edit_desc_tarjeta(edited_id):
     
     if new_total > 0:
         st.toast(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="💳")
-        # ❌ ELIMINADO: st.rerun()
-    else:
-        st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 def update_edit_tributo(edited_id):
     """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y guarda)."""
@@ -477,12 +474,9 @@ def update_edit_tributo(edited_id):
     
     if new_total > 0:
         st.toast(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}", icon="🏛️")
-        # ❌ ELIMINADO: st.rerun()
-    else:
-        st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 # =========================================================================
-# CONTINUACIÓN DEL CÓDIGO (Sin otros cambios)
+# CONTINUACIÓN DEL CÓDIGO 
 # =========================================================================
 
 def edit_record_callback(record_id):
@@ -1108,7 +1102,7 @@ with tab_dashboard:
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
-# --- Bloque de Configuración (Mantenido igual) ---
+# --- Bloque de Configuración ---
 with tab_config:
     st.header("⚙️ Configuración Maestra")
     st.info("⚠️ Los cambios aquí modifican el cálculo para **TODAS** las nuevas entradas y se guardan inmediatamente.")
@@ -1151,6 +1145,7 @@ with tab_config:
                     
             save_config(new_precios_config, PRECIOS_FILE)
             re_load_global_config() 
+            time.sleep(0.1) # <-- PAUSA AÑADIDA
             st.success("Configuración de Precios Guardada y Recargada.")
             st.rerun()
 
@@ -1181,6 +1176,7 @@ with tab_config:
                     
             save_config(new_descuentos_config, DESCUENTOS_FILE)
             re_load_global_config()
+            time.sleep(0.1) # <-- PAUSA AÑADIDA
             st.success("Configuración de Tributo Base Guardada y Recargada.")
             st.rerun()
             
@@ -1223,6 +1219,7 @@ with tab_config:
                         
                 save_config(new_reglas_config, REGLAS_FILE)
                 re_load_global_config()
+                time.sleep(0.1) # <-- PAUSA AÑADIDA
                 st.success("Configuración de Reglas Diarias Guardada y Recargada.")
                 st.rerun()
 
@@ -1253,5 +1250,6 @@ with tab_config:
                     
             save_config(new_comisiones_config, COMISIONES_FILE)
             re_load_global_config()
+            time.sleep(0.1) # <-- PAUSA AÑADIDA
             st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
