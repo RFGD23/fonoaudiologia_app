@@ -859,15 +859,32 @@ with tab_dashboard:
 
         st.markdown("---")
         
+        # 🟢 CAMBIO IMPLEMENTADO AQUÍ: Agrupación por día en lugar de semana
+        st.subheader("Tesoro Líquido Acumulado por Día")
+        
         df_temp = df.copy()
+        # 1. Aseguramos que la columna sea un datetime real para operar con ella
         df_temp['Fecha_dt'] = pd.to_datetime(df_temp['Fecha']) 
-        df_grouped = df_temp.groupby(df_temp['Fecha_dt'].dt.to_period('W')).agg(
+        
+        # 2. Agrupar el Tesoro Líquido por la fecha exacta de registro (Día)
+        df_grouped_daily = df_temp.groupby('Fecha_dt').agg(
             {'Tesoro Líquido': 'sum'}
         ).reset_index()
-        df_grouped['Fecha'] = df_grouped['Fecha_dt'].dt.to_timestamp()
         
-        fig = px.line(df_grouped, x='Fecha', y='Tesoro Líquido', title='Tesoro Líquido Acumulado por Semana', labels={'Tesoro Líquido': 'Tesoro Líquido', 'Fecha': 'Semana'}, line_shape='spline')
+        # 3. Crear el gráfico de líneas
+        fig = px.line(
+            df_grouped_daily, 
+            x='Fecha_dt', 
+            y='Tesoro Líquido', 
+            title='Tesoro Líquido Acumulado por Día', 
+            labels={'Tesoro Líquido': 'Tesoro Líquido', 'Fecha_dt': 'Día de Registro'}, 
+            line_shape='spline'
+        )
+        # Añadir marcadores para ver los puntos de datos individuales
+        fig.update_traces(mode='lines+markers') 
+        
         st.plotly_chart(fig, use_container_width=True)
+        # 🟢 FIN DEL CAMBIO DEL GRÁFICO
         
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
