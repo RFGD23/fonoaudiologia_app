@@ -80,7 +80,8 @@ def re_load_global_config():
     DESCUENTOS_REGLAS = {}
     for lugar, reglas in reglas_raw.items():
         lugar_upper = lugar.upper()
-        reglas_upper = {dia.upper(): monto for dia, dia in reglas.items()}
+        # CORRECCIÓN DE SYNTAXIS: Usar 'dia' para la clave y 'monto' para el valor.
+        reglas_upper = {dia.upper(): monto for dia, monto in reglas.items()} 
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
     # Recrear las listas dinámicas
@@ -305,7 +306,7 @@ def submit_and_reset():
     st.session_state.form_desc_adic_input = 0
     st.session_state.form_fecha = date.today() 
     if METODOS_PAGO: st.session_state.form_metodo_pago = METODOS_PAGO[0]
-    st.session_state.form_paciente = "" # Limpiar el campo paciente (este estaba dentro del form)
+    st.session_state.form_paciente = "" # Limpiar el campo paciente
     
     # Limpiar el mensaje de error si existía
     if 'save_error' in st.session_state:
@@ -401,7 +402,7 @@ with tab_registro:
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra'.")
         
-    # --- Inicialización de Valores (Se mantiene igual) ---
+    # --- Inicialización de Valores ---
     lugar_key_initial = LUGARES[0] if LUGARES else ''
     if 'form_lugar' not in st.session_state: st.session_state.form_lugar = lugar_key_initial
     
@@ -483,20 +484,20 @@ with tab_registro:
     st.markdown("---") 
 
     # ----------------------------------------------------------------------
-    # WIDGETS DE FECHA Y PAGO (TAMBIÉN FUERA DEL FORMULARIO) - Diseño Principal
+    # WIDGETS DE FECHA Y PAGO (MOVIDOS FUERA DEL FORMULARIO - AHORA REACTIVOS)
     # ----------------------------------------------------------------------
     col_c1, col_c2 = st.columns(2)
     
     with col_c1:
-        # FECHA DE ATENCIÓN (MOVIDO FUERA - AHORA REACTIVO)
+        # FECHA DE ATENCIÓN (REACTIVO)
         st.date_input(
             "🗓️ Fecha de Atención", 
             st.session_state.form_fecha, 
-            key="form_fecha", # Clave principal (reactiva)
-            on_change=force_recalculate 
+            key="form_fecha", 
+            on_change=force_recalculate # ¡REACTIVO!
         ) 
         
-        # MÉTODO DE PAGO (MOVIDO FUERA - AHORA REACTIVO)
+        # MÉTODO DE PAGO (REACTIVO)
         try:
             pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
         except ValueError:
@@ -505,9 +506,9 @@ with tab_registro:
         st.radio(
             "💳 Método de Pago Mágico", 
             options=METODOS_PAGO, 
-            key="form_metodo_pago", # Clave principal (reactiva)
+            key="form_metodo_pago", 
             index=pago_idx,
-            on_change=force_recalculate 
+            on_change=force_recalculate # ¡REACTIVO!
         )
         
         st.markdown("---") # Separador visual
@@ -516,7 +517,7 @@ with tab_registro:
     # WIDGETS DE FORMULARIO (DENTRO DEL st.form)
     # ----------------------------------------------------------------------
     
-    # El formulario AHORA solo contiene el campo Paciente y los Outputs
+    # El formulario ahora solo contiene el campo Paciente (para limpieza automática)
     with st.form("registro_atencion_form"): 
         
         # --- COLUMNA IZQUIERDA (SOLO PACIENTE) ---
