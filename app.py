@@ -36,15 +36,13 @@ def load_config(filename):
             return data
             
     except FileNotFoundError:
-        st.info(f"Archivo de configuración '{filename}' no encontrado. Creando uno por defecto.")
-        
         # --- Configuración por defecto para inicialización ---
         if filename == PRECIOS_FILE:
             default_data = {
                 'ALERCE': {'Item1': 30000, 'Item2': 40000}, 
                 'AMAR AUSTRAL': {'ADIR+ADOS2': 30000, '4 SABADOS': 25000, '5 SABADOS': 30000, 'PACIENTE': 30000}
             }
-        elif filename == DESCUENTos_FILE:
+        elif filename == DESCUENTOS_FILE:
             default_data = {'ALERCE': 5000, 'AMAR AUSTRAL': 7000}
         elif filename == COMISIONES_FILE:
             default_data = {'EFECTIVO': 0.00, 'TRANSFERENCIA': 0.00, 'TARJETA': 0.03, 'AMAR AUSTRAL': 0.00}
@@ -216,7 +214,7 @@ def update_price_from_item_or_lugar():
 def force_recalculate():
     """
     Función de callback simple para asegurar que el estado de la sesión
-    se ha actualizado. Usado en widgets reactivos fuera de st.form.
+    se ha actualizado. Usado en widgets reactivos.
     """
     pass
 
@@ -238,8 +236,8 @@ def update_edit_price():
 
 def submit_and_reset():
     """
-    CORRECCIÓN CLAVE: Función de callback que ejecuta la lógica de guardado 
-    y luego resetea los widgets reactivos antes del rerun forzado por el form submit.
+    Callback que ejecuta la lógica de guardado y luego resetea todos los widgets 
+    manualmente (ya que quitamos clear_on_submit).
     """
     
     # 0. Verificación simple del campo obligatorio
@@ -254,7 +252,6 @@ def submit_and_reset():
         
     # --- LÓGICA DE GUARDADO Y CÁLCULO ---
     
-    # 1. Recalculo final usando los valores del state ANTES del reinicio
     paciente_nombre_guardar = st.session_state.form_paciente 
     
     resultados_finales = calcular_ingreso(
@@ -292,7 +289,7 @@ def submit_and_reset():
     # 4. Mensaje de éxito
     st.session_state['save_status'] = f"🎉 ¡Aventura registrada para {paciente_nombre_guardar}! El tesoro es {format_currency(resultados_finales['total_recibido'])}"
 
-    # --- LÓGICA DE REINICIO DE WIDGETS REACTIVOS (FUERA DEL FORM) ---
+    # --- LÓGICA DE REINICIO MANUAL DE TODOS LOS WIDGETS ---
     
     default_lugar = LUGARES[0] if LUGARES else ''
     items_default = list(PRECIOS_BASE_CONFIG.get(default_lugar, {}).keys())
@@ -305,6 +302,7 @@ def submit_and_reset():
     st.session_state.form_desc_adic_input = 0
     st.session_state.form_fecha = date.today()
     if METODOS_PAGO: st.session_state.form_metodo_pago = METODOS_PAGO[0]
+    st.session_state.form_paciente = "" # Limpiar el campo paciente
     
     # Limpiar el mensaje de error si existía
     if 'save_error' in st.session_state:
@@ -367,8 +365,7 @@ if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondar
     re_load_global_config() 
     st.session_state.atenciones_df = load_data() 
     
-    # Usar la función de reinicio general aquí también
-    submit_and_reset() # Se usa el mismo callback, pero solo la parte de reinicio afecta.
+    submit_and_reset() 
     
     st.success("Caché, Configuración y Datos Recargados. ¡La magia continúa!")
     st.rerun() 
@@ -400,12 +397,10 @@ with tab_registro:
     
     if not LUGARES or not METODOS_PAGO:
         st.error("🚨 ¡Fallo de Configuración! La lista de Lugares o Métodos de Pago está vacía. Por favor, revisa la pestaña 'Configuración Maestra'.")
-    
-    # 1. Definir valores iniciales y forzar la inicialización si faltan
-    
+        
+    # --- Inicialización de Valores (Se mantiene igual) ---
     lugar_key_initial = LUGARES[0] if LUGARES else ''
-    if 'form_lugar' not in st.session_state:
-        st.session_state.form_lugar = lugar_key_initial
+    if 'form_lugar' not in st.session_state: st.session_state.form_lugar = lugar_key_initial
     
     current_lugar_value_upper = st.session_state.form_lugar 
     items_filtrados_initial = list(PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).keys())
@@ -416,129 +411,123 @@ with tab_registro:
     
     precio_base_sugerido = PRECIOS_BASE_CONFIG.get(current_lugar_value_upper, {}).get(st.session_state.form_item, 0)
     
-    if 'form_valor_bruto' not in st.session_state:
-        st.session_state.form_valor_bruto = int(precio_base_sugerido)
-        
-    if 'form_desc_adic_input' not in st.session_state:
-        st.session_state.form_desc_adic_input = 0
+    if 'form_valor_bruto' not in st.session_state: st.session_state.form_valor_bruto = int(precio_base_sugerido)
+    if 'form_desc_adic_input' not in st.session_state: st.session_state.form_desc_adic_input = 0
+    if 'form_fecha' not in st.session_state: st.session_state.form_fecha = date.today()
+    if 'form_metodo_pago' not in st.session_state: st.session_state.form_metodo_pago = METODOS_PAGO[0] if METODOS_PAGO else ''
+    if 'form_paciente' not in st.session_state: st.session_state.form_paciente = ""
 
-    if 'form_fecha' not in st.session_state:
-        st.session_state.form_fecha = date.today()
-
-    if 'form_metodo_pago' not in st.session_state:
-        st.session_state.form_metodo_pago = METODOS_PAGO[0] if METODOS_PAGO else ''
 
     # ----------------------------------------------------------------------
-    # WIDGETS REACTIVOS FUERA DEL FORMULARIO 
-    # ----------------------------------------------------------------------
-
-    col_reactivo_1, col_reactivo_2, col_reactivo_3, col_reactivo_4 = st.columns(4)
-
-    # 1. SELECTBOX LUGAR
-    with col_reactivo_1:
-        try:
-            lugar_index = LUGARES.index(st.session_state.form_lugar) if st.session_state.form_lugar in LUGARES else 0
-        except ValueError:
-            lugar_index = 0
-
-        st.selectbox("📍 Castillo/Lugar de Atención", 
-                     options=LUGARES, 
-                     key="form_lugar",
-                     index=lugar_index,
-                     on_change=update_price_from_item_or_lugar) 
-    
-    # 2. SELECTBOX ÍTEM
-    with col_reactivo_2:
-        lugar_key_current = st.session_state.form_lugar 
-        items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
-        
-        item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
-        
-        try:
-            item_index = items_filtrados_current.index(item_para_seleccionar) if item_para_seleccionar in items_filtrados_current else 0
-        except (ValueError, KeyError):
-            item_index = 0 
-            
-        st.selectbox("📋 Poción/Procedimiento", 
-                     options=items_filtrados_current, 
-                     key="form_item",
-                     index=item_index, 
-                     on_change=update_price_from_item_or_lugar) 
-    
-    # 3. VALOR BRUTO 
-    with col_reactivo_3:
-        st.number_input(
-            "💰 **Valor Bruto (Recompensa)**", 
-            min_value=0, 
-            step=1000,
-            key="form_valor_bruto", 
-            on_change=force_recalculate 
-        )
-
-    # 4. DESCUENTO ADICIONAL (FUERA DEL FORMULARIO)
-    with col_reactivo_4:
-        st.number_input(
-            "✂️ **Polvo Mágico Extra (Ajuste)**", 
-            min_value=-500000, 
-            value=st.session_state.get('form_desc_adic_input', 0), 
-            step=1000, 
-            key="form_desc_adic_input",
-            on_change=force_recalculate, 
-            help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
-        )
-
-    st.markdown("---") # Separador visual
-
-    col_fecha, col_pago = st.columns([1, 1])
-
-    with col_fecha:
-        # FECHA DE ATENCIÓN (FUERA DEL FORMULARIO)
-        fecha = st.date_input(
-            "🗓️ Fecha de Atención", 
-            st.session_state.form_fecha, 
-            key="form_fecha_reactive", 
-            on_change=force_recalculate 
-        ) 
-        st.session_state.form_fecha = fecha
-
-
-    with col_pago:
-        try:
-            pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
-        except ValueError:
-            pago_idx = 0
-            
-        # MÉTODO DE PAGO (FUERA DEL FORMULARIO)
-        metodo_pago = st.radio(
-            "💳 Método de Pago Mágico", 
-            options=METODOS_PAGO, 
-            key="form_metodo_pago_reactive", 
-            index=pago_idx,
-            on_change=force_recalculate 
-        )
-        st.session_state.form_metodo_pago = metodo_pago
-
-    st.markdown("---") # Separador visual
-
-    # ----------------------------------------------------------------------
-    # FORMULARIO PARA DATOS RESTANTES Y BOTÓN DE ENVÍO
+    # FORMULARIO UNIFICADO (Todos los widgets dentro del form)
     # ----------------------------------------------------------------------
     
-    with st.form("registro_atencion_form", clear_on_submit=True): 
+    with st.form("registro_atencion_form"): 
         
-        # Paciente (el único widget dentro del form con input)
-        paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", "", key="form_paciente")
+        # --- Cabecera de la Aventura (Lugar, Ítem, Valor, Descuento Adicional) ---
+        col_cabecera_1, col_cabecera_2, col_cabecera_3, col_cabecera_4 = st.columns(4)
+
+        # 1. SELECTBOX LUGAR
+        with col_cabecera_1:
+            try:
+                lugar_index = LUGARES.index(st.session_state.form_lugar) if st.session_state.form_lugar in LUGARES else 0
+            except ValueError:
+                lugar_index = 0
+
+            st.selectbox("📍 Castillo/Lugar de Atención", 
+                        options=LUGARES, 
+                        key="form_lugar",
+                        index=lugar_index,
+                        on_change=update_price_from_item_or_lugar) 
         
-        with st.expander("Detalles Adicionales y Cálculo Final", expanded=True):
+        # 2. SELECTBOX ÍTEM
+        with col_cabecera_2:
+            lugar_key_current = st.session_state.form_lugar 
+            items_filtrados_current = list(PRECIOS_BASE_CONFIG.get(lugar_key_current, {}).keys())
             
-            if not LUGARES or not items_filtrados_initial:
-                 st.info("Configuración de Lugar/Ítem incompleta. Revisa la pestaña de Configuración.")
-            else:
+            item_para_seleccionar = st.session_state.get('form_item', items_filtrados_current[0] if items_filtrados_current else '')
+            
+            try:
+                item_index = items_filtrados_current.index(item_para_seleccionar) if item_para_seleccionar in items_filtrados_current else 0
+            except (ValueError, KeyError):
+                item_index = 0 
                 
+            st.selectbox("📋 Poción/Procedimiento", 
+                        options=items_filtrados_current, 
+                        key="form_item",
+                        index=item_index, 
+                        on_change=update_price_from_item_or_lugar) 
+        
+        # 3. VALOR BRUTO 
+        with col_cabecera_3:
+            st.number_input(
+                "💰 **Valor Bruto (Recompensa)**", 
+                min_value=0, 
+                step=1000,
+                key="form_valor_bruto", 
+                on_change=force_recalculate 
+            )
+
+        # 4. DESCUENTO ADICIONAL
+        with col_cabecera_4:
+            st.number_input(
+                "✂️ **Polvo Mágico Extra (Ajuste)**", 
+                min_value=-500000, 
+                value=st.session_state.get('form_desc_adic_input', 0), 
+                step=1000, 
+                key="form_desc_adic_input",
+                on_change=force_recalculate, 
+                help="Ingresa un valor positivo para descuentos (más magia) o negativo para cargos."
+            )
+        
+        st.markdown("---") # Separador visual
+        
+        # --- Contenido Principal (Diseño de 2 columnas para Inputs/Outputs) ---
+        
+        col_c1, col_c2 = st.columns(2)
+
+        # --- COLUMNA IZQUIERDA (Datos personales y de pago) ---
+        with col_c1:
+            
+            # FECHA DE ATENCIÓN
+            fecha = st.date_input(
+                "🗓️ Fecha de Atención", 
+                st.session_state.form_fecha, 
+                key="form_fecha", 
+                on_change=force_recalculate 
+            ) 
+            st.session_state.form_fecha = fecha # Actualiza el estado
+            
+            # PACIENTE
+            paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", st.session_state.form_paciente, key="form_paciente")
+            
+            # MÉTODO DE PAGO
+            try:
+                pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
+            except ValueError:
+                pago_idx = 0
+            
+            metodo_pago = st.radio(
+                "💳 Método de Pago Mágico", 
+                options=METODOS_PAGO, 
+                key="form_metodo_pago", 
+                index=pago_idx,
+                on_change=force_recalculate 
+            )
+            st.session_state.form_metodo_pago = metodo_pago # Actualiza el estado
+
+        # --- COLUMNA DERECHA (Cálculos de Salida) ---
+        with col_c2:
+            
+            st.markdown("### Detalles de Reducciones y Tesoro Neto")
+
+            if not LUGARES or not items_filtrados_initial:
+                st.info("Configuración de Lugar/Ítem incompleta. Revisa la pestaña de Configuración.")
+            else:
+                # Recalcular usando los valores del state
                 desc_adicional_calc = st.session_state.form_desc_adic_input 
                 valor_bruto_calc = st.session_state.form_valor_bruto
                 
-                # Ejecutar el cálculo central en tiempo real. 
                 resultados = calcular_ingreso(
                     st.session_state.form_lugar, 
                     st.session_state.form_item,              
@@ -550,7 +539,7 @@ with tab_registro:
 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.form_metodo_pago, 0.00)*100:.0f}%):** {format_currency(resultados['desc_tarjeta'])}")
                 
-                # --- LÓGICA DE ETIQUETADO DEL TRIBUTO ---
+                # LÓGICA DE ETIQUETADO DEL TRIBUTO
                 current_lugar_upper = st.session_state.form_lugar 
                 
                 try:
@@ -578,18 +567,16 @@ with tab_registro:
                 st.success(
                     f"## 💎 Tesoro Total (Líquido): {format_currency(resultados['total_recibido'])}"
                 )
-                
+        
+        st.markdown("---") 
+
         # --- BOTÓN DE ENVÍO DEL FORMULARIO ---
         st.form_submit_button(
             "✅ ¡Guardar Aventura y Tesoro!", 
             use_container_width=True, 
             type="primary",
-            # 🚨 El callback ahora GUARDA y REINICIA
             on_click=submit_and_reset 
         )
-        
-        # NOTA: El bloque 'if submit_button:' se ha eliminado, 
-        # ya que toda la lógica de guardado está en el on_click.
 
 with tab_dashboard:
     # ===============================================
