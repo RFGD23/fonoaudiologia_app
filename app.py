@@ -20,8 +20,9 @@ REGLAS_FILE = 'descuentos_reglas.json'
 def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
     try:
+        # Usamos sort_keys=True para mantener el orden consistente si Python lo permite
         with open(filename, 'w') as f:
-            json.dump(data, f, indent=4)
+            json.dump(data, f, indent=4, sort_keys=True)
     except Exception as e:
         st.error(f"Error al guardar el archivo {filename}: {e}")
 
@@ -80,7 +81,7 @@ def re_load_global_config():
     DESCUENTOS_REGLAS = {}
     for lugar, reglas in reglas_raw.items():
         lugar_upper = lugar.upper()
-        # CORRECCIÓN DE SYNTAXIS: Usar 'dia' para la clave y 'monto' para el valor.
+        # CORRECCIÓN DE SYNTAXIS (AttributeError resuelto)
         reglas_upper = {dia.upper(): monto for dia, monto in reglas.items()} 
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
@@ -319,12 +320,19 @@ def format_currency(value):
     return f"${int(value):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def sanitize_number_input(value):
-    """Convierte un valor de input de tabla (que puede ser NaN o string) a int."""
-    if pd.isna(value) or value is None:
+    """
+    [CORRECCIÓN CLAVE]: Convierte un valor de input de tabla (que puede ser NaN, string o float) a int. 
+    Esto soluciona el problema de la persistencia de los campos numéricos en la configuración.
+    """
+    # 1. Tratar valores nulos o vacíos
+    if pd.isna(value) or value is None or value == "":
         return 0
+    
+    # 2. Convertir a float primero y luego a int (para manejar correctamente la notación científica o strings de números)
     try:
         return int(float(value))
     except (ValueError, TypeError):
+        # 3. Si no es un número válido, devolver 0
         return 0 
 
 def set_dark_mode_theme():
@@ -559,13 +567,15 @@ with tab_registro:
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 is_rule_applied = False
                 if current_lugar_upper in DESCUENTOS_REGLAS:
-                    try: 
+                    try:
+                        # Convertir a mayúsculas para la búsqueda
                         regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
+                        
                         if regla_especial_monto is not None:
                             desc_lugar_label += f" (Regla: {current_day_name})"
                             is_rule_applied = True
                     except Exception:
-                        pass
+                         pass
 
                 if not is_rule_applied and DESCUENTOS_LUGAR.get(current_lugar_upper, 0) > 0:
                     desc_lugar_label += " (Base)"
@@ -1087,9 +1097,10 @@ with tab_config:
                 for _, row in edited_df_precios.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     item = str(row['Ítem'])
+                    # [CORRECCIÓN APLICADA] Usar la función robusta de sanitización
                     valor = sanitize_number_input(row['Valor Bruto']) 
                     
-                    if lugar and item:
+                    if lugar and item and item != 'None':
                         if lugar not in new_precios_config:
                             new_precios_config[lugar] = {}
                         new_precios_config[lugar][item] = valor
@@ -1141,6 +1152,7 @@ with tab_config:
                 new_descuentos_config = {}
                 for _, row in edited_df_descuentos.iterrows():
                     lugar = str(row['Lugar']).upper() 
+                    # [CORRECCIÓN APLICADA] Usar la función robusta de sanitización
                     valor = sanitize_number_input(row['Desc. Fijo Base']) 
                     if lugar:
                         new_descuentos_config[lugar] = valor
@@ -1195,9 +1207,10 @@ with tab_config:
                 for _, row in edited_df_reglas.iterrows():
                     lugar = str(row['Lugar']).upper() 
                     dia = str(row['Día']).upper() 
+                    # [CORRECCIÓN APLICADA] Usar la función robusta de sanitización
                     monto = sanitize_number_input(row['Descuento Regla']) 
                     
-                    if lugar and dia:
+                    if lugar and dia and dia in DIAS_SEMANA:
                         if lugar not in new_reglas_config:
                             new_reglas_config[lugar] = {}
                         new_reglas_config[lugar][dia] = monto
