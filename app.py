@@ -508,12 +508,9 @@ def delete_record_callback(record_id):
 # -------------------------------------------------------------
 # FUNCIONES DE CONTROL DE FLUJO DE ELIMINACIÓN DE 2 PASOS
 # -------------------------------------------------------------
-def start_delete_confirmation(record_id):
-    """Callback para iniciar el modo de confirmación de eliminación."""
-    # Limpia el estado de edición por si estaba abierto
-    if st.session_state.edited_record_id is not None:
-        _cleanup_edit_state() 
-    st.session_state.confirming_delete_id = record_id
+
+# La función start_delete_confirmation fue obsoleta y su lógica se movió directamente
+# al flujo de control principal después del botón, para evitar la APIException.
 
 def cancel_delete():
     """Callback para cancelar la eliminación."""
@@ -665,7 +662,7 @@ if 'input_id_edit' not in st.session_state:
 if 'input_id_delete' not in st.session_state:
     st.session_state.input_id_delete = None 
 
-# 🚨 NUEVO ESTADO PARA EL FLUJO DE ELIMINACIÓN DE 2 PASOS
+# 🚨 ESTADO PARA EL FLUJO DE ELIMINACIÓN DE 2 PASOS
 if 'confirming_delete_id' not in st.session_state:
     st.session_state.confirming_delete_id = None
 
@@ -1154,7 +1151,7 @@ with tab_dashboard:
                     edit_record_callback(id_to_edit)
                     st.rerun()
             
-            # --- ELIMINACIÓN (Paso 1) ---
+            # --- ELIMINACIÓN (Paso 1 - SIN CALLBACK on_click) ---
             with col_delete_input:
                 id_to_delete = st.number_input(
                     "ID a eliminar:", 
@@ -1167,20 +1164,29 @@ with tab_dashboard:
                 )
             
             is_valid_id_delete = id_to_delete is not None and id_to_delete in df['ID'].values
-
+            delete_button_key = f'btn_start_delete_single' # Clave simple (no depende de id)
+            
             with col_delete_button:
                 st.markdown("<br>", unsafe_allow_html=True) # Espacio para alinear el botón
                 
-                # El botón inicial SOLO llama al callback para ESTABLECER EL ESTADO DE CONFIRMACIÓN
-                st.button(
+                # Botón de eliminación - SÓLO registra la pulsación
+                delete_clicked = st.button(
                     "🗑️ Eliminar Registro", 
-                    key='btn_start_delete_single', 
+                    key=delete_button_key, 
                     type="danger",
                     use_container_width=True, 
-                    disabled=not is_valid_id_delete,
-                    on_click=start_delete_confirmation,
-                    args=(id_to_delete,)
+                    disabled=not is_valid_id_delete
                 )
+
+            # 🚨 LÓGICA DE DETECCIÓN DE PULSACIÓN DEL BOTÓN DE ELIMINAR 🚨
+            # Este es el bloque que evita la StreamlitAPIException
+            if delete_clicked and is_valid_id_delete:
+                # 1. Limpia el estado de edición por si estaba abierto
+                if st.session_state.edited_record_id == id_to_delete:
+                    _cleanup_edit_state() 
+                # 2. Setea el ID a confirmar (esto activará el bloque de confirmación abajo)
+                st.session_state.confirming_delete_id = id_to_delete
+                # 3. No hace falta rerun, el estado de confirmación se dibujará en el próximo ciclo.
 
             # 🚨 BLOQUE DE CONFIRMACIÓN (Paso 2 - Visible solo si se pulsó el botón de eliminar) 🚨
             if st.session_state.confirming_delete_id is not None:
@@ -1199,8 +1205,8 @@ with tab_dashboard:
                     ):
                         # Ejecutar la acción de la base de datos (Callback que setea deletion_success_id)
                         delete_record_callback(confirm_id) 
-                        # No necesitamos más lógica aquí, el rerun ocurrirá al inicio del script
-                        
+                        # El rerun ocurrirá al inicio del script
+
                 with col_c_no:
                     st.button(
                         "❌ CANCELAR",
@@ -1218,7 +1224,7 @@ with tab_dashboard:
     else:
         st.warning("Aún no hay registros de atenciones para mostrar en el mapa del tesoro. ¡Registra una aventura primero!")
 
-# --- Bloque de Configuración (Mantenido igual con las pausas) ---
+# --- Bloque de Configuración (Mantenido) ---
 with tab_config:
     st.header("⚙️ Configuración Maestra")
     st.info("⚠️ Los cambios aquí modifican el cálculo para **TODAS** las nuevas entradas y se guardan inmediatamente.")
@@ -1369,3 +1375,4 @@ with tab_config:
             time.sleep(0.1) 
             st.success("Configuración de Comisiones Guardada y Recargada.")
             st.rerun()
+        
