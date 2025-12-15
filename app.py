@@ -5,7 +5,9 @@ import json
 import time 
 import plotly.express as px
 import numpy as np 
-import sqlite3 
+# import sqlite3  # YA NO USAMOS SQLITE3
+import psycopg2 # USAMOS ESTE PARA POSTGRESQL/SUPABASE
+from psycopg2 import sql # Para construir queries de forma segura
 import os 
 from dateutil.parser import parse
 
@@ -13,20 +15,26 @@ from dateutil.parser import parse
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
-DB_FILE = 'tesoro_datos.db'
+# DB_FILE ya no es necesario
 PRECIOS_FILE = 'precios_base.json'
 DESCUENTOS_FILE = 'descuentos_lugar.json'
 COMISIONES_FILE = 'comisiones_pago.json'
 REGLAS_FILE = 'descuentos_reglas.json' 
 
+
 def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
     try:
+        # Nota: estos archivos (json) se guardarán en el sistema de archivos
+        # de Streamlit Cloud. Son más estables que SQLite, pero se recomienda
+        # usar Google Sheets si estos archivos cambian muy a menudo.
         with open(filename, 'w') as f:
             json.dump(data, f, indent=4, sort_keys=True)
             f.flush() 
     except Exception as e:
         st.error(f"Error al guardar el archivo {filename}: {e}")
+
+# ... (load_config y el resto de la configuración de maestras se mantiene igual) ...
 
 def load_config(filename):
     """Carga la configuración desde un archivo JSON, creando el archivo si no existe."""
@@ -104,85 +112,142 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 
 
 # ===============================================
-# 2. FUNCIONES DE PERSISTENCIA (SQLite)
+# 2. FUNCIONES DE PERSISTENCIA (POSTGRESQL)
 # ===============================================
 
+@st.cache_resource
 def get_db_connection():
-    """Establece la conexión a la base de datos y asegura la existencia de la tabla."""
-    conn = sqlite3.connect(DB_FILE)
-    
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS atenciones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Fecha TEXT,
-            Lugar TEXT,
-            Item TEXT,         
-            Paciente TEXT,
-            "Método Pago" TEXT,      
-            "Valor Bruto" INTEGER,
-            "Desc. Fijo Lugar" INTEGER, 
-            "Desc. Tarjeta" INTEGER,
-            "Desc. Adicional" INTEGER,
-            "Total Recibido" INTEGER
-        )
-    """)
-    conn.commit()
-    return conn
+    """Establece la conexión a la base de datos PostgreSQL usando secrets."""
+    try:
+        conn = psycopg2.connect(st.secrets["connections"]["postgres_uri"])
+        conn.autocommit = True # Necesario para CREATE TABLE
+        cursor = conn.cursor()
 
-@st.cache_data(show_spinner=False)
+        # Asegura la existencia de la tabla (usando comillas dobles para nombres con espacios)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS atenciones (
+                id SERIAL PRIMARY KEY,
+                Fecha DATE,
+                Lugar TEXT,
+                Item TEXT,         
+                Paciente TEXT,
+                "Método Pago" TEXT,      
+                "Valor Bruto" INTEGER,
+                "Desc. Fijo Lugar" INTEGER, 
+                "Desc. Tarjeta" INTEGER,
+                "Desc. Adicional" INTEGER,
+                "Total Recibido" INTEGER
+            )
+        """)
+        conn.commit()
+        return conn
+    except KeyError:
+        st.error("🚨 Error: No se encontró la URI de PostgreSQL en `.streamlit/secrets.toml`.")
+        return None
+    except Exception as e:
+        st.error(f"🚨 Error de conexión a la BD: {e}")
+        return None
+
+@st.cache_data(show_spinner="Cargando Tesoro desde la Nube...")
 def load_data_from_db():
-    """Carga los datos desde SQLite a un DataFrame. **Ordenado por ID ASC (1, 2, 3...)**."""
+    """Carga los datos desde PostgreSQL a un DataFrame."""
     conn = get_db_connection()
-    # Aseguramos el orden ascendente (1, 2, 3...) desde la BD
-    df = pd.read_sql_query("SELECT * FROM atenciones ORDER BY id ASC", conn) 
-    conn.close()
-    
-    if not df.empty:
-        df['Fecha'] = df['Fecha'].apply(lambda x: parse(x).date() if pd.notna(x) else None)
+    if conn is None:
+        return pd.DataFrame()
         
-        # Forzamos las columnas clave a enteros
-        numeric_cols = ['id', 'Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido']
-        for col in numeric_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+    # Usar pd.read_sql para obtener los datos directamente
+    try:
+        # Aseguramos el orden ascendente por ID
+        df = pd.read_sql_query('SELECT * FROM atenciones ORDER BY id ASC', conn)
+        
+        if not df.empty:
+            df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
+            
+            # Forzamos las columnas clave a enteros
+            numeric_cols = ['id', 'Valor Bruto', 'Desc. Fijo Lugar', 'Desc. Tarjeta', 'Desc. Adicional', 'Total Recibido']
+            for col in numeric_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
 
-    
-    if 'Item' in df.columns:
-        df = df.rename(columns={'Item': 'Ítem'})
+        if 'Item' in df.columns:
+            df = df.rename(columns={'Item': 'Ítem'})
+            
+        return df
         
-    return df
+    except Exception as e:
+        st.error(f"Error al cargar datos desde PostgreSQL: {e}")
+        return pd.DataFrame()
+
 
 def insert_new_record(record_dict):
-    """Inserta un nuevo registro en la tabla de atenciones."""
+    """Inserta un nuevo registro en la tabla de atenciones en PostgreSQL."""
     conn = get_db_connection()
-    cols = ", ".join(f'"{k}"' for k in record_dict.keys())
-    placeholders = ", ".join("?" * len(record_dict))
-    query = f"INSERT INTO atenciones ({cols}) VALUES ({placeholders})"
-    conn.execute(query, list(record_dict.values()))
-    conn.commit()
-    conn.close()
-    return True
-
-def update_existing_record(record_dict):
-    """Actualiza un registro existente usando su 'id' como clave."""
-    conn = get_db_connection()
-    record_id = record_dict.pop('id') 
-    set_clauses = [f'"{k}" = ?' for k in record_dict.keys()]
-    set_clause = ", ".join(set_clauses)
-    query = f"UPDATE atenciones SET {set_clause} WHERE id = ?"
-    values = list(record_dict.values()) + [record_id]
+    if conn is None:
+        return False
+        
+    cursor = conn.cursor()
+    
+    # Prepara los nombres de las columnas y placeholders
+    cols = list(record_dict.keys())
+    values = list(record_dict.values())
+    
+    # Crea una lista de identificadores SQL para las columnas (asegurando comillas dobles)
+    col_names = sql.SQL(', ').join(map(sql.Identifier, cols))
+    
+    # Crea una lista de placeholders para los valores (%s)
+    placeholders = sql.SQL(', ').join(sql.Placeholder() * len(values))
+    
+    # Construye el query usando sql.SQL para seguridad
+    query = sql.SQL("INSERT INTO atenciones ({}) VALUES ({})").format(col_names, placeholders)
     
     try:
-        conn.execute(query, values)
+        cursor.execute(query, values)
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error al insertar en la BD: {e}")
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+
+
+def update_existing_record(record_dict):
+    """Actualiza un registro existente usando su 'id' como clave en PostgreSQL."""
+    conn = get_db_connection()
+    if conn is None:
+        return False
+        
+    cursor = conn.cursor()
+    record_id = record_dict.pop('id') 
+    
+    set_clauses = []
+    values = []
+    
+    # Construir las cláusulas SET de forma segura
+    for k, v in record_dict.items():
+        set_clauses.append(sql.SQL("{} = %s").format(sql.Identifier(k)))
+        values.append(v)
+        
+    set_clause = sql.SQL(', ').join(set_clauses)
+    
+    # Añadir el ID al final de los valores y construir el query
+    values.append(record_id)
+    query = sql.SQL("UPDATE atenciones SET {} WHERE id = %s").format(set_clause)
+
+    try:
+        cursor.execute(query, values)
         conn.commit()
         return True
     except Exception as e:
         st.error(f"Error al actualizar la BD: {e}")
+        conn.rollback()
         return False
     finally:
-        conn.close()
+        cursor.close()
 
-# 🚨 FUNCIÓN DE ELIMINACIÓN ELIMINADA 🚨
+# ... (El resto de las funciones de cálculo y la lógica de la interfaz de usuario se mantiene igual) ...
+
 
 # ===============================================
 # 3. FUNCIONES DE CÁLCULO Y LÓGICA DE NEGOCIO
@@ -332,7 +397,7 @@ def _cleanup_edit_state():
     
 def save_edit_state_to_df():
     """
-    Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos SQLite.
+    Guarda el estado actual de los inputs de edición DIRECTAMENTE en la base de datos PostgreSQL.
     Retorna el Tesoro Líquido calculado.
     """
     if st.session_state.edited_record_id is None:
@@ -864,10 +929,11 @@ with tab_dashboard:
 
         st.markdown("---")
         
-        # 🟢 CAMBIO IMPLEMENTADO AQUÍ: Agrupación por semana corregida y etiqueta legible
+        # 🟢 Gráfico Semanal (mantenido del paso anterior)
         st.subheader("Tesoro Líquido Acumulado por Semana")
         
         df_temp = df.copy()
+        # Asegurarse de que 'Fecha' sea datetime para usar dt.to_period
         df_temp['Fecha_dt'] = pd.to_datetime(df_temp['Fecha']) 
         
         # 1. Agrupar por periodo semanal ('W').
@@ -896,7 +962,7 @@ with tab_dashboard:
         fig.update_layout(xaxis_tickangle=-45)
         
         st.plotly_chart(fig, use_container_width=True)
-        # 🟢 FIN DEL CAMBIO DEL GRÁFICO
+        # 🟢 FIN DEL GRÁFICO
         
         
         # --- TABLA DE DATOS CRUDA Y EDICIÓN ---
@@ -921,7 +987,9 @@ with tab_dashboard:
                  st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Ajuste']
                  st.session_state.original_desc_fijo_lugar = edit_row['Desc. Tributo']
                  st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
-                 st.session_state[f'edit_fecha_{edited_id}'] = parse(str(edit_row['Fecha'])).date() 
+                 # Usamos pd.to_datetime para asegurar que se puede convertir a date
+                 fecha_dt = pd.to_datetime(edit_row['Fecha'])
+                 st.session_state[f'edit_fecha_{edited_id}'] = fecha_dt.date() if pd.notna(fecha_dt) else date.today()
                  st.session_state[f'edit_lugar_{edited_id}'] = edit_row['Lugar']
                  st.session_state[f'edit_item_{edited_id}'] = edit_row['Ítem']
                  st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
