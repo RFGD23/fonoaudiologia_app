@@ -149,10 +149,10 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     # 2. LÓGICA DE DESCUENTO FIJO CONDICIONAL (Tributo)
     
-    # *** REGLA ESPECIAL PARA CPM: 51.3% DEL VALOR BRUTO ***
+    # *** REGLA ESPECIAL PARA CPM: 48.7% DEL VALOR BRUTO ***
     if lugar_upper == 'CPM':
-        # El descuento fijo es el 51.3% del valor bruto
-        desc_fijo_lugar = valor_bruto * 0.513 
+        # El descuento fijo es el 48.7% del valor bruto
+        desc_fijo_lugar = valor_bruto * 0.487
     # ******************************************************
     else:
         # Si no es CPM, se aplica el descuento fijo normal (base o por regla diaria)
