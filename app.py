@@ -12,7 +12,6 @@ import sqlite3
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
-# CAMBIAMOS DATA_FILE por DB_FILE para SQLite
 DB_FILE = 'tesoro_datos.db' # Nombre del archivo de la BD SQLite
 PRECIOS_FILE = 'precios_base.json'
 DESCUENTOS_FILE = 'descuentos_lugar.json'
@@ -22,8 +21,8 @@ REGLAS_FILE = 'descuentos_reglas.json'
 def save_config(data, filename):
     """Guarda la configuración a un archivo JSON."""
     try:
-        # Usamos sort_keys=True para mantener el orden consistente si Python lo permite
         with open(filename, 'w') as f:
+            # Usamos sort_keys=True para mantener el orden consistente si Python lo permite
             json.dump(data, f, indent=4, sort_keys=True)
     except Exception as e:
         st.error(f"Error al guardar el archivo {filename}: {e}")
@@ -66,15 +65,12 @@ def sanitize_number_input(value):
     """
     Convierte un valor de input de tabla (que puede ser NaN, string o float) a int. 
     """
-    # 1. Tratar valores nulos o vacíos
     if pd.isna(value) or value is None or value == "":
         return 0
     
-    # 2. Convertir a float primero y luego a int 
     try:
         return int(float(value))
     except (ValueError, TypeError):
-        # 3. Si no es un número válido, devolver 0
         return 0 
 
 def re_load_global_config():
@@ -117,7 +113,6 @@ DIAS_SEMANA = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 
 
 def get_db_connection():
     """Establece la conexión a la base de datos y asegura la existencia de la tabla."""
-    # Conexión al archivo SQLite (se crea si no existe)
     conn = sqlite3.connect(DB_FILE)
     
     # Aseguramos la existencia de la tabla 'atenciones'.
@@ -154,7 +149,6 @@ def load_data_from_db():
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d')
     
     # Renombramos "Item" a "Ítem" aquí solo para visualización si es necesario.
-    # Esta es la única vez que usamos 'Ítem'
     if 'Item' in df.columns:
         df = df.rename(columns={'Item': 'Ítem'})
         
@@ -165,8 +159,7 @@ def insert_new_record(record_dict):
     """Inserta un nuevo registro en la tabla de atenciones."""
     conn = get_db_connection()
     
-    # 💡 CORRECCIÓN CRÍTICA: Forzamos comillas dobles (") alrededor de cada nombre de columna
-    # para manejar los espacios y asegurar sintaxis SQL correcta.
+    # Forzamos comillas dobles (") alrededor de cada nombre de columna para el SQL.
     cols = ", ".join(f'"{k}"' for k in record_dict.keys())
     placeholders = ", ".join("?" * len(record_dict))
     
@@ -182,17 +175,14 @@ def update_existing_record(record_dict):
     """Actualiza un registro existente usando su 'id' como clave."""
     conn = get_db_connection()
     
-    # El ID es necesario para el WHERE, lo separamos
     record_id = record_dict.pop('id') 
     
-    # 💡 CORRECCIÓN: Las columnas en SET también deben ir entre comillas
     # Construimos la parte SET de la consulta ("col1" = ?, "col2" = ?)
     set_clauses = [f'"{k}" = ?' for k in record_dict.keys()]
     set_clause = ", ".join(set_clauses)
     
     query = f"UPDATE atenciones SET {set_clause} WHERE id = ?"
     
-    # Los valores son (valores a actualizar) + (el id para el WHERE)
     values = list(record_dict.values()) + [record_id]
     
     try:
@@ -205,8 +195,6 @@ def update_existing_record(record_dict):
     finally:
         conn.close()
 
-
-# --- EL RESTO DE LAS FUNCIONES DE CÁLCULO Y ESTILO PERMANECEN IGUAL ---
 
 def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_atencion, valor_bruto_override=None):
     """Calcula el ingreso final líquido."""
@@ -222,8 +210,6 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
               'total_recibido': 0
           }
     
-    # NOTA: En este punto, 'item' puede ser 'Item' o 'Ítem' dependiendo de cómo lo ingresó el usuario.
-    # El diccionario de precios usa la clave tal cual está en la configuración.
     precio_base = PRECIOS_BASE_CONFIG.get(lugar_upper, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
@@ -231,17 +217,14 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     # *** REGLA ESPECIAL PARA CPM: 48.7% DEL VALOR BRUTO ***
     if lugar_upper == 'CPM':
-        # El descuento fijo es el 48.7% del valor bruto
         desc_fijo_lugar = valor_bruto * 0.487 
     # ******************************************************
     else:
-        # Si no es CPM, se aplica el descuento fijo normal (base o por regla diaria)
         desc_fijo_lugar = DESCUENTOS_LUGAR.get(lugar_upper, 0) 
     
-        # 2.1. Revisar si existe una regla especial para el día (Solo si NO es CPM)
+        # 2.1. Revisar si existe una regla especial para el día
         if lugar_upper in DESCUENTOS_REGLAS:
             try:
-                # Asegurarse de que el objeto fecha sea una instancia de date
                 if isinstance(fecha_atencion, pd.Timestamp):
                     fecha_obj = fecha_atencion.date()
                 elif isinstance(fecha_atencion, date):
@@ -273,12 +256,11 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
     
     return {
         'valor_bruto': int(valor_bruto),
-        'desc_fijo_lugar': int(desc_fijo_lugar), # Se redondea el resultado del 48.7%
+        'desc_fijo_lugar': int(desc_fijo_lugar), 
         'desc_tarjeta': int(desc_tarjeta),
         'total_recibido': int(total_recibido)
     }
 
-# --- Funciones de Reactividad y Reinicio (SIN CAMBIOS) ---
 
 def update_price_from_item_or_lugar():
     """Callback para actualizar precio y estado al cambiar Lugar o Ítem."""
@@ -328,9 +310,6 @@ def update_edit_price():
     
     st.session_state.edit_valor_bruto = int(precio_base_sugerido_edit)
 
-# --------------------------------------------------------------------------
-# --- FUNCIONES DE GUARDADO Y LIMPIEZA PARA EL MODO EDICIÓN ---
-# Lógica modificada para usar UPDATE en la BD
 def save_edit_state_to_df():
     """
     Guarda el estado actual de los inputs de edición (st.session_state) 
@@ -339,7 +318,6 @@ def save_edit_state_to_df():
     if st.session_state.edit_index is None:
         return 0
         
-    # El ID de la BD está almacenado en 'edited_record_id' (necesario para el UPDATE)
     record_id = st.session_state.get('edited_record_id')
     if record_id is None:
         st.error("Error: ID de registro para edición no encontrado.")
@@ -362,9 +340,9 @@ def save_edit_state_to_df():
     )
     
     # 3. Preparar el registro para la actualización de la BD
-    # NOTA: Usamos 'Item' aquí para coincidir con la tabla SQL
+    # NOTA: Usamos 'Item' para coincidir con la tabla SQL
     data_to_update = {
-        "id": record_id, # CLAVE para el WHERE de la actualización
+        "id": record_id, 
         "Fecha": st.session_state.edit_fecha.strftime('%Y-%m-%d'),
         "Lugar": st.session_state.edit_lugar,
         "Item": st.session_state.edit_item, # <-- USAMOS 'Item' (SIN TILDE)
@@ -378,19 +356,19 @@ def save_edit_state_to_df():
     }
     
     # 4. Actualizar la fila en la BASE DE DATOS y forzar la recarga del DataFrame
-    if update_existing_record(data_to_update): # <--- LLAMADA A UPDATE SQL
+    if update_existing_record(data_to_update): 
         # Si la actualización fue exitosa, limpiamos la caché y recargamos el DF
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
         return total_liquido_final
     
-    return 0 # Retorna 0 si hubo error.
+    return 0 
 
 def _cleanup_edit_state():
     """Limpia las claves de sesión relacionadas con el modo de edición para forzar el cierre del expander."""
     st.session_state.edit_index = None
     st.session_state.edited_lugar_state = None
-    st.session_state.edited_record_id = None # <--- LIMPIAMOS EL ID DE LA BD
+    st.session_state.edited_record_id = None 
     # ELIMINAMOS TAMBIÉN LAS CLAVES DE INPUTS PARA FORZAR LA RECARGA EN EL PRÓXIMO OPEN
     if 'edit_valor_bruto' in st.session_state: del st.session_state.edit_valor_bruto
     if 'edit_desc_adic' in st.session_state: del st.session_state.edit_desc_adic
@@ -398,27 +376,25 @@ def _cleanup_edit_state():
     if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
 
 
-# --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO Y BANDERA) ---
-# Lógica modificada para usar UPDATE en la BD
-
 def update_edit_bruto_price():
     """Callback: Actualiza el Valor Bruto, guarda, notifica Y CIERRA (usando bandera)."""
     lugar_edit = st.session_state.edit_lugar.upper()
     item_edit = st.session_state.edit_item
     
     # 1. Obtener y actualizar el nuevo precio base
+    # NOTA: Si el item no existe, usa el valor actual de edit_valor_bruto
     nuevo_precio_base = PRECIOS_BASE_CONFIG.get(lugar_edit, {}).get(item_edit, st.session_state.edit_valor_bruto)
     st.session_state.edit_valor_bruto = int(nuevo_precio_base)
     
     # 2. Guardar en BD y obtener el nuevo total
-    new_total = save_edit_state_to_df() # <--- USA LA NUEVA LÓGICA DE BD
+    new_total = save_edit_state_to_df() 
     
     if new_total > 0:
         st.success(f"Valor Bruto actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
         
         # 3. CIERRE FORZADO CON BANDERA
         _cleanup_edit_state()
-        st.session_state.rerun_after_edit = True # <-- ACTIVAR BANDERA
+        st.session_state.rerun_after_edit = True 
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
@@ -432,29 +408,30 @@ def update_edit_desc_tarjeta():
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
     
     # 2. Guardar en BD y obtener el nuevo total
-    new_total = save_edit_state_to_df() # <--- USA LA NUEVA LÓGICA DE BD
+    new_total = save_edit_state_to_df() 
     
     if new_total > 0:
         st.success(f"Desc. Tarjeta actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
         
         # 3. CIERRE FORZADO CON BANDERA
         _cleanup_edit_state()
-        st.session_state.rerun_after_edit = True # <-- ACTIVAR BANDERA
+        st.session_state.rerun_after_edit = True 
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
 
 def update_edit_tributo():
     """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar), guarda, notifica Y CIERRA (usando bandera)."""
-    current_lugar_upper = st.session_state.edit_lugar 
+    current_lugar_upper = st.session_state.edit_lugar.upper()
     
     # --- LÓGICA DE CÁLCULO DE TRIBUTO EN EDICIÓN ---
-    if current_lugar_upper.upper() == 'CPM':
+    if current_lugar_upper == 'CPM':
         # Aplica la regla del 48.7% si es CPM
         desc_fijo_calc = int(st.session_state.edit_valor_bruto * 0.487)
     else:
         # Lógica de cálculo del Tributo normal (base o regla diaria)
         try:
+            # st.session_state.edit_fecha se actualiza automáticamente por el date_input
             current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
         except Exception:
             current_day_name = "LUNES" 
@@ -472,19 +449,16 @@ def update_edit_tributo():
     st.session_state.original_desc_fijo_lugar = desc_fijo_calc
     
     # 2. Guardar en BD y obtener el nuevo total
-    new_total = save_edit_state_to_df() # <--- USA LA NUEVA LÓGICA DE BD
+    new_total = save_edit_state_to_df() 
     
     if new_total > 0:
         st.success(f"Tributo actualizado y guardado. Nuevo Tesoro Líquido: {format_currency(new_total)}")
         
         # 3. CIERRE FORZADO CON BANDERA
         _cleanup_edit_state()
-        st.session_state.rerun_after_edit = True # <-- ACTIVAR BANDERA
+        st.session_state.rerun_after_edit = True 
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
-
-
-# --- Fin de Funciones de Callback para Botones de Edición ---
 
 
 def submit_and_reset():
@@ -528,12 +502,12 @@ def submit_and_reset():
         "Total Recibido": resultados_finales['total_recibido']
     }
     
-    # 3. ¡NUEVO! Insertar en la BD en lugar de concatenar el DataFrame
+    # 3. Insertar en la BD 
     insert_new_record(nueva_atencion)
     
     # 4. Forzar la recarga del DataFrame desde la BD al limpiar la caché
-    load_data_from_db.clear() # Limpia la caché de la función de carga
-    st.session_state.atenciones_df = load_data_from_db() # Recarga el DataFrame actualizado
+    load_data_from_db.clear() 
+    st.session_state.atenciones_df = load_data_from_db() 
     
     # 5. Mensaje de éxito
     st.session_state['save_status'] = f"🎉 ¡Aventura registrada para {paciente_nombre_guardar}! El tesoro es {format_currency(resultados_finales['total_recibido'])}"
@@ -561,6 +535,7 @@ def format_currency(value):
     """Función para formatear números como moneda en español con punto y coma."""
     if value is None or not isinstance(value, (int, float)):
           value = 0
+    # REVISIÓN: Usar el locale español 'es_CL' o similar si estuviera disponible, pero esta es la alternativa más simple y segura en Streamlit.
     return f"${int(value):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def set_dark_mode_theme():
@@ -615,7 +590,7 @@ if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondar
     st.cache_data.clear() 
     st.cache_resource.clear() 
     
-    # 💡 ¡CLAVE! Limpiamos la caché de la función de BD antes de recargar
+    # Limpiamos la caché de la función de BD antes de recargar
     load_data_from_db.clear() 
     re_load_global_config() 
     st.session_state.atenciones_df = load_data_from_db() # Recarga desde la BD
@@ -628,7 +603,6 @@ if st.sidebar.button("🧹 Limpiar Cenicienta (Caché y Config)", type="secondar
 st.sidebar.markdown("---") 
 
 # Cargar los datos y asignarlos al estado de la sesión
-# 💡 Usamos la nueva función de BD aquí.
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data_from_db()
     
@@ -741,7 +715,7 @@ with tab_registro:
     st.markdown("---") 
 
     # ----------------------------------------------------------------------
-    # WIDGETS DE FECHA Y PAGO (MOVIDOS FUERA DEL FORMULARIO - AHORA REACTIVOS)
+    # WIDGETS DE FECHA Y PAGO (REACTIVOS)
     # ----------------------------------------------------------------------
     col_c1, col_c2 = st.columns(2)
     
@@ -778,7 +752,7 @@ with tab_registro:
         
         # --- COLUMNA IZQUIERDA (SOLO PACIENTE) ---
         with col_c1: 
-            # PACIENTE (SE MANTIENE DENTRO para limpieza fácil)
+            # PACIENTE 
             paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", st.session_state.form_paciente, key="form_paciente")
 
         # --- COLUMNA DERECHA (Cálculos de Salida) ---
@@ -868,10 +842,6 @@ with tab_dashboard:
             
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
         
-        # --- FILTROS DINÁMICOS EN LA BARRA LATERAL (Lugar e Ítem) ---
-        # ... (La lógica de filtros y métricas aquí) ...
-        
-        
         # --- MÉTRICAS PRINCIPALES ---
         total_ingreso = df['Total Recibido'].sum()
         total_atenciones = len(df)
@@ -951,8 +921,8 @@ with tab_dashboard:
             edit_row = df[df['id'] == edit_index_input].iloc[0]
             
             # 2.2 Almacenamos los datos para el expander
-            st.session_state.edit_index = edit_row.name # Usar el índice de Pandas solo para el expander
-            st.session_state.edited_record_id = edit_row['id'] # CLAVE: ID de la BD
+            st.session_state.edit_index = edit_row.name 
+            st.session_state.edited_record_id = edit_row['id'] 
             
             # 2.3 Abrir el expander
             with st.expander(f"Editar Registro ID: {edit_index_input} ({edit_row['Paciente']})", expanded=True):
@@ -962,7 +932,7 @@ with tab_dashboard:
                 
                 # Inicialización de estado para la edición
                 for col in ['Lugar', 'Ítem', 'Paciente', 'Método Pago']:
-                    # CORRECCIÓN DE SINTAXIS: Usamos comillas dobles internas para 'í' y 'i'
+                    # REVISIÓN: Corrección de sintaxis y uso de replace
                     if f'edit_{col.lower().replace("í", "i")}' not in st.session_state:
                         st.session_state[f'edit_{col.lower().replace("í", "i")}'] = edit_row[col]
 
@@ -971,53 +941,55 @@ with tab_dashboard:
                 # -------------------------------------------------------------
                 with col_e1:
                     
-                    # FECHA (Solo lectura / se puede cambiar)
+                    # FECHA 
                     fecha_val = edit_row['Fecha'].date()
-                    st.session_state.edit_fecha = st.date_input(
+                    # REVISIÓN CRÍTICA: Eliminación de la asignación directa que causaba StreamlitAPIException
+                    st.date_input(
                         "🗓️ Fecha de Atención", 
                         fecha_val, 
                         key="edit_fecha",
-                        on_change=update_edit_tributo # Recalcula el tributo si cambia la fecha
+                        on_change=update_edit_tributo 
                     )
                     
-                    # LUGAR (con callback para actualizar precio)
+                    # LUGAR 
                     try:
                         lugar_idx = LUGARES.index(edit_row['Lugar'])
                     except ValueError:
                         lugar_idx = 0
                         
+                    # REVISIÓN CRÍTICA: Eliminación de la asignación directa
                     st.selectbox(
                         "📍 Lugar", 
                         options=LUGARES, 
                         key="edit_lugar", 
                         index=lugar_idx,
-                        on_change=update_edit_price # Recalcula precio sugerido
+                        on_change=update_edit_price 
                     )
 
-                    # ÍTEM (con callback para actualizar precio)
+                    # ÍTEM 
                     items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar, {}).keys())
                     try:
-                         # Si la tabla tiene ÍTEM, usamos 'Ítem', si tiene 'Item' (por BD) usamos 'Item'
-                         # El acceso es genérico para funcionar con cualquiera de las dos columnas
                          item_val = edit_row.get('Ítem', edit_row.get('Item', items_edit_list[0] if items_edit_list else ''))
                          item_idx = items_edit_list.index(item_val) if item_val in items_edit_list else 0
                     except (ValueError, KeyError):
                         item_idx = 0
                         
+                    # REVISIÓN CRÍTICA: Eliminación de la asignación directa
                     st.selectbox(
                         "📋 Ítem", 
                         options=items_edit_list, 
-                        key="edit_item", # <-- Esta clave se usa luego para el UPDATE (con el valor correcto: Ítem/Item)
+                        key="edit_item", 
                         index=item_idx,
-                        on_change=update_edit_price # Recalcula precio sugerido
+                        on_change=update_edit_price 
                     )
                     
                     # PACIENTE
-                    st.text_input("👤 Paciente", edit_row['Paciente'], key="edit_paciente")
+                    # REVISIÓN CRÍTICA: Eliminación de la asignación directa
+                    st.text_input("👤 Paciente", st.session_state.edit_paciente, key="edit_paciente")
                     
                     st.markdown("---")
                     
-                    # Botón de Guardado general (aplica todos los cambios)
+                    # Botón de Guardado general 
                     if st.button("💾 Aplicar y Cerrar Edición", type="primary"):
                         new_total = save_edit_state_to_df()
                         st.success(f"Registro ID {edit_index_input} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
@@ -1029,12 +1001,13 @@ with tab_dashboard:
                 # -------------------------------------------------------------
                 with col_e2:
                     
-                    # VALOR BRUTO (Editable, con botón de "resetear" al precio base)
+                    # VALOR BRUTO 
                     if 'edit_valor_bruto' not in st.session_state:
                          st.session_state.edit_valor_bruto = edit_row['Valor Bruto']
                     
                     col_b1, col_b2 = st.columns([0.7, 0.3])
                     with col_b1:
+                        # REVISIÓN CRÍTICA: Eliminación de la asignación directa
                         st.number_input(
                             "💰 Valor Bruto (Editable)", 
                             min_value=0, 
@@ -1045,7 +1018,7 @@ with tab_dashboard:
                         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                         st.button("🔄 Actualizar Precio Base", key='btn_update_price', on_click=update_edit_bruto_price, use_container_width=True)
 
-                    # MÉTODO DE PAGO (con botón de recálculo de Tarjeta)
+                    # MÉTODO DE PAGO 
                     try:
                         metodo_idx = METODOS_PAGO.index(edit_row['Método Pago'])
                     except ValueError:
@@ -1053,6 +1026,7 @@ with tab_dashboard:
                         
                     col_m1, col_m2 = st.columns([0.7, 0.3])
                     with col_m1:
+                        # REVISIÓN CRÍTICA: Eliminación de la asignación directa
                         st.selectbox(
                             "💳 Método Pago", 
                             options=METODOS_PAGO, 
@@ -1060,8 +1034,9 @@ with tab_dashboard:
                             index=metodo_idx
                         )
                         # Valor original de desc tarjeta (para el cálculo final)
-                        st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
-                        
+                        if 'original_desc_tarjeta' not in st.session_state:
+                            st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
+                            
                         st.warning(f"Desc. Tarjeta (Actual): {format_currency(st.session_state.original_desc_tarjeta)}")
                     
                     with col_m2:
@@ -1069,10 +1044,12 @@ with tab_dashboard:
                          st.button("🔄 Recalcular Tarjeta", key='btn_update_tarjeta', on_click=update_edit_desc_tarjeta, use_container_width=True)
 
 
-                    # TRIBUTO / DESC FIJO (con botón de recálculo de tributo)
+                    # TRIBUTO / DESC FIJO (sin widget de input, solo se muestra)
                     col_t1, col_t2 = st.columns([0.7, 0.3])
                     with col_t1:
-                        st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
+                        if 'original_desc_fijo_lugar' not in st.session_state:
+                            st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
+                            
                         st.info(f"Tributo/Desc. Fijo (Actual): {format_currency(st.session_state.original_desc_fijo_lugar)}")
                     with col_t2:
                          st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -1083,6 +1060,7 @@ with tab_dashboard:
                     if 'edit_desc_adic' not in st.session_state:
                          st.session_state.edit_desc_adic = edit_row['Desc. Adicional']
                          
+                    # REVISIÓN CRÍTICA: Eliminación de la asignación directa
                     st.number_input(
                         "✂️ Polvo Mágico Extra (Ajuste/Desc. Adic.)", 
                         min_value=-500000, 
@@ -1096,9 +1074,6 @@ with tab_dashboard:
                 # --- Botón de Cierre Manual ---
                 st.button("❌ Cerrar Edición", key='btn_close_edit', on_click=_cleanup_edit_state)
             
-        elif edit_index_input in df['id'].values:
-            # Si el ID existe pero no está en modo edición (debe ser raro)
-             st.warning(f"El ID {edit_index_input} existe, pero no está en modo edición. Intenta de nuevo.")
         elif edit_index_input > 1 and df['id'].max() > 0 and edit_index_input > df['id'].max():
             st.warning("El ID ingresado es mayor que el ID máximo registrado.")
         else:
