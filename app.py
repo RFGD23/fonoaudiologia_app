@@ -80,7 +80,7 @@ def re_load_global_config():
     DESCUENTOS_REGLAS = {}
     for lugar, reglas in reglas_raw.items():
         lugar_upper = lugar.upper()
-        reglas_upper = {dia.upper(): monto for dia, monto in reglas.items()}
+        reglas_upper = {dia.upper(): monto for dia, dia in reglas.items()}
         DESCUENTOS_REGLAS[lugar_upper] = reglas_upper
 
     # Recrear las listas dinámicas
@@ -237,7 +237,7 @@ def update_edit_price():
 def submit_and_reset():
     """
     Callback que ejecuta la lógica de guardado y luego resetea todos los widgets 
-    manualmente (ya que quitamos clear_on_submit).
+    manualmente.
     """
     
     # 0. Verificación simple del campo obligatorio
@@ -254,16 +254,14 @@ def submit_and_reset():
     
     paciente_nombre_guardar = st.session_state.form_paciente 
     
-    # NOTA: Ahora usamos los valores del session_state para el cálculo, ya que los widgets reactivos
-    #       (Lugar, Item, Valor Bruto, Desc Adicional) están fuera del form y ya actualizaron el state.
-    #       Los widgets de formulario (Fecha, Pago) también actualizaron su respectivo state
+    # Ahora usamos los valores del session_state para el cálculo (todos están actualizados)
     
     resultados_finales = calcular_ingreso(
         st.session_state.form_lugar, 
         st.session_state.form_item, 
-        st.session_state.form_metodo_pago, # Usa el valor del estado actualizado
+        st.session_state.form_metodo_pago, 
         st.session_state.form_desc_adic_input, 
-        fecha_atencion=st.session_state.form_fecha, # Usa el valor del estado actualizado
+        fecha_atencion=st.session_state.form_fecha, 
         valor_bruto_override=st.session_state.form_valor_bruto
     )
     
@@ -300,18 +298,14 @@ def submit_and_reset():
     default_item = items_default[0] if items_default else ''
     default_valor_bruto = int(PRECIOS_BASE_CONFIG.get(default_lugar, {}).get(default_item, 0))
 
-    # Limpiar/resetear las claves de SESSION_STATE (esto resetea los widgets que usan estas claves)
+    # Limpiar/resetear las claves de SESSION_STATE
     if LUGARES: st.session_state.form_lugar = default_lugar
     st.session_state.form_item = default_item
     st.session_state.form_valor_bruto = default_valor_bruto
     st.session_state.form_desc_adic_input = 0
-    st.session_state.form_fecha = date.today() # Resetea el date_input
+    st.session_state.form_fecha = date.today() 
     if METODOS_PAGO: st.session_state.form_metodo_pago = METODOS_PAGO[0]
-    st.session_state.form_paciente = "" # Limpiar el campo paciente
-    
-    # Limpiar las claves temporales del formulario (que no tienen on_change)
-    if 'form_fecha_no_reactive' in st.session_state: del st.session_state.form_fecha_no_reactive
-    if 'form_metodo_pago_no_reactive' in st.session_state: del st.session_state.form_metodo_pago_no_reactive
+    st.session_state.form_paciente = "" # Limpiar el campo paciente (este estaba dentro del form)
     
     # Limpiar el mensaje de error si existía
     if 'save_error' in st.session_state:
@@ -340,7 +334,7 @@ def set_dark_mode_theme():
     [data-testid="stSidebarContent"] { background-color: rgba(30, 30, 30, 0.9) !important; color: white; }
     .css-1r6dm1, .streamlit-expander, 
     [data-testid="stMetric"], [data-testid="stVerticalBlock"],
-    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child { 
+    .stSelectbox > div:first-child, .stDateInput > div:first-child, .stTextInput > div:first-child, .stNumberInput > div:first-child, .stRadio > div { 
         background-color: rgba(10, 10, 10, 0.6) !important; border-radius: 10px; padding: 10px;
     } 
     .stDataFrame, .stTable { background-color: rgba(0, 0, 0, 0.4) !important; }
@@ -489,42 +483,46 @@ with tab_registro:
     st.markdown("---") 
 
     # ----------------------------------------------------------------------
+    # WIDGETS DE FECHA Y PAGO (TAMBIÉN FUERA DEL FORMULARIO) - Diseño Principal
+    # ----------------------------------------------------------------------
+    col_c1, col_c2 = st.columns(2)
+    
+    with col_c1:
+        # FECHA DE ATENCIÓN (MOVIDO FUERA - AHORA REACTIVO)
+        st.date_input(
+            "🗓️ Fecha de Atención", 
+            st.session_state.form_fecha, 
+            key="form_fecha", # Clave principal (reactiva)
+            on_change=force_recalculate 
+        ) 
+        
+        # MÉTODO DE PAGO (MOVIDO FUERA - AHORA REACTIVO)
+        try:
+            pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
+        except ValueError:
+            pago_idx = 0
+        
+        st.radio(
+            "💳 Método de Pago Mágico", 
+            options=METODOS_PAGO, 
+            key="form_metodo_pago", # Clave principal (reactiva)
+            index=pago_idx,
+            on_change=force_recalculate 
+        )
+        
+        st.markdown("---") # Separador visual
+
+    # ----------------------------------------------------------------------
     # WIDGETS DE FORMULARIO (DENTRO DEL st.form)
     # ----------------------------------------------------------------------
     
+    # El formulario AHORA solo contiene el campo Paciente y los Outputs
     with st.form("registro_atencion_form"): 
         
-        col_c1, col_c2 = st.columns(2)
-
-        # --- COLUMNA IZQUIERDA (Datos personales y de pago NO REACTIVOS) ---
-        with col_c1:
-            
-            # FECHA DE ATENCIÓN (DENTRO DEL FORM - NO REACTIVO)
-            fecha = st.date_input(
-                "🗓️ Fecha de Atención", 
-                st.session_state.form_fecha, 
-                key="form_fecha_no_reactive" # CLAVE TEMPORAL
-            ) 
-            # Sobreescribimos el estado original para el cálculo y guardado
-            st.session_state.form_fecha = fecha 
-            
-            # PACIENTE (DENTRO DEL FORM - PARA LIMPIEZA)
+        # --- COLUMNA IZQUIERDA (SOLO PACIENTE) ---
+        with col_c1: 
+            # PACIENTE (SE MANTIENE DENTRO para limpieza fácil)
             paciente = st.text_input("👤 Héroe/Heroína (Paciente/Asociado)", st.session_state.form_paciente, key="form_paciente")
-            
-            # MÉTODO DE PAGO (DENTRO DEL FORM - NO REACTIVO)
-            try:
-                pago_idx = METODOS_PAGO.index(st.session_state.get('form_metodo_pago', METODOS_PAGO[0]))
-            except ValueError:
-                pago_idx = 0
-            
-            metodo_pago = st.radio(
-                "💳 Método de Pago Mágico", 
-                options=METODOS_PAGO, 
-                key="form_metodo_pago_no_reactive", # CLAVE TEMPORAL
-                index=pago_idx
-            )
-            # Sobreescribimos el estado original para el cálculo y guardado
-            st.session_state.form_metodo_pago = metodo_pago 
 
         # --- COLUMNA DERECHA (Cálculos de Salida) ---
         with col_c2:
@@ -538,7 +536,7 @@ with tab_registro:
                 desc_adicional_calc = st.session_state.form_desc_adic_input 
                 valor_bruto_calc = st.session_state.form_valor_bruto
                 
-                # Cálculo usando los valores del session_state (actualizados por los widgets de arriba)
+                # Cálculo usando los valores del session_state (todos actualizados al ser reactivos)
                 resultados = calcular_ingreso(
                     st.session_state.form_lugar, 
                     st.session_state.form_item,              
@@ -974,14 +972,14 @@ with tab_dashboard:
                 
                 st.warning(f"**Desc. Tarjeta 🧙‍♀️ ({COMISIONES_PAGO.get(st.session_state.edit_metodo, 0.00)*100:.0f}%):** {format_currency(resultados_edit['desc_tarjeta'])}")
                 
-                # --- LÓGICA CORREGIDA PARA EL ETIQUETADO DEL TRIBUTO EN EDICIÓN ---
+                # --- LÓGICA DE ETIQUETADO DEL TRIBUTO EN EDICIÓN ---
                 current_lugar_upper = st.session_state.edit_lugar 
                 current_day_name = DIAS_SEMANA[st.session_state.edit_fecha.weekday()]
                 desc_lugar_label = f"Tributo al Castillo ({current_lugar_upper})"
                 
                 is_rule_applied = False
                 if current_lugar_upper in DESCUENTOS_REGLAS:
-                     try: # Usar try-except para el acceso al diccionario anidado
+                     try: 
                          regla_especial_monto = DESCUENTOS_REGLAS[current_lugar_upper].get(current_day_name.upper())
                          if regla_especial_monto is not None:
                              desc_lugar_label += f" (Regla: {current_day_name})"
@@ -1267,4 +1265,3 @@ with tab_config:
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar comisiones: {e}")
-            
