@@ -293,10 +293,12 @@ def _cleanup_edit_state():
     """Limpia las claves de sesión relacionadas con el modo de edición para forzar el cierre del expander."""
     st.session_state.edit_index = None
     st.session_state.edited_lugar_state = None
-    if 'original_desc_fijo_lugar' in st.session_state: 
-        del st.session_state.original_desc_fijo_lugar
-    if 'original_desc_tarjeta' in st.session_state: 
-        del st.session_state.original_desc_tarjeta
+    # ELIMINAMOS TAMBIÉN LAS CLAVES DE INPUTS PARA FORZAR LA RECARGA EN EL PRÓXIMO OPEN
+    if 'edit_valor_bruto' in st.session_state: del st.session_state.edit_valor_bruto
+    if 'edit_desc_adic' in st.session_state: del st.session_state.edit_desc_adic
+    if 'original_desc_fijo_lugar' in st.session_state: del st.session_state.original_desc_fijo_lugar
+    if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
+
 
 # --------------------------------------------------------------------------
 
@@ -967,14 +969,8 @@ with tab_dashboard:
                 st.session_state.edit_index = index
                 st.session_state.edited_lugar_state = row['Lugar'] 
                 
-                # Inicializar los valores de number_input en el state antes de abrir el modal
-                st.session_state.edit_valor_bruto = int(row['Valor Bruto'])
-                st.session_state.edit_desc_adic = int(row['Desc. Adicional'])
-                
-                # Inicializar el estado de la fila original para recalculos específicos
-                st.session_state.original_desc_fijo_lugar = int(row['Desc. Fijo Lugar'])
-                st.session_state.original_desc_tarjeta = int(row['Desc. Tarjeta'])
-
+                # LA INICIALIZACIÓN DE edit_valor_bruto y edit_desc_adic SE MUEVE AL BLOQUE SUPERIOR
+                # AHORA SOLO FORZAMOS EL RERUN PARA QUE VUELVA A PASAR POR EL BLOQUE DE INICIALIZACIÓN SEGURA
                 st.rerun()
 
             # --- BOTÓN DE ELIMINACIÓN ---
@@ -1024,6 +1020,21 @@ with tab_dashboard:
         if 'edited_lugar_state' not in st.session_state or st.session_state.edited_lugar_state is None:
             st.session_state.edited_lugar_state = data_to_edit['Lugar']
             
+        # 💡 --- INICIALIZACIÓN SEGURA DE VALORES DEL MODAL (¡CORRECCIÓN DEL ERROR!) ---
+        # Aseguramos que todas las claves de number_input existan antes de que se lean
+        if 'edit_valor_bruto' not in st.session_state:
+            st.session_state.edit_valor_bruto = int(data_to_edit['Valor Bruto'])
+            
+        if 'edit_desc_adic' not in st.session_state:
+            st.session_state.edit_desc_adic = int(data_to_edit['Desc. Adicional'])
+            
+        if 'original_desc_fijo_lugar' not in st.session_state: 
+            st.session_state.original_desc_fijo_lugar = int(data_to_edit['Desc. Fijo Lugar'])
+
+        if 'original_desc_tarjeta' not in st.session_state: 
+            st.session_state.original_desc_tarjeta = int(data_to_edit['Desc. Tarjeta'])
+        # ---------------------------------------------------------------------------
+
 
         with st.expander(f"📝 Editar Aventura para {data_to_edit['Paciente']}", expanded=True):
             
@@ -1095,6 +1106,8 @@ with tab_dashboard:
                         "💰 **Valor Bruto (Recompensa)**", 
                         min_value=0, 
                         step=1000,
+                        # Usamos el valor inicializado en el bloque de corrección (Paso 1)
+                        value=st.session_state.edit_valor_bruto,
                         key="edit_valor_bruto" ,
                         on_change=force_recalculate 
                     )
@@ -1111,6 +1124,7 @@ with tab_dashboard:
                 edited_desc_adicional_manual = st.number_input(
                     "✂️ **Polvo Mágico Extra (Ajuste)**", 
                     min_value=-500000, 
+                    # Usamos el valor inicializado en el bloque de corrección (Paso 1)
                     value=st.session_state.edit_desc_adic, 
                     step=1000, 
                     key="edit_desc_adic",
@@ -1119,13 +1133,13 @@ with tab_dashboard:
                 )
                 
                 # Recalculo en tiempo real para la edición. 
-                # El total debe reflejar los valores guardados en los estados `original_*` (si los botones fueron presionados)
-                # o los valores originales del DF si no han sido presionados.
                 
                 data_to_edit_current = st.session_state.atenciones_df.loc[index_to_edit]
                 
-                desc_tarjeta_display = st.session_state.get('original_desc_tarjeta', data_to_edit_current['Desc. Tarjeta'])
-                desc_fijo_display = st.session_state.get('original_desc_fijo_lugar', data_to_edit_current['Desc. Fijo Lugar'])
+                # Los valores de display ahora vienen SIEMPRE del session_state (original_*) que se inicializó
+                # o que se actualizó con los botones de recalculo.
+                desc_tarjeta_display = st.session_state.original_desc_tarjeta
+                desc_fijo_display = st.session_state.original_desc_fijo_lugar
                 
                 st.markdown("---") 
                 st.markdown("### 🛠️ Recalcular Reducciones")
@@ -1194,7 +1208,13 @@ with tab_dashboard:
             # EL BOTÓN "GUARDAR EDICIÓN" CIERRA EL EXPANDER Y ACTIVA LA BANDERA
             if col_actions[0].button("💾 Guardar Edición", use_container_width=True, type="primary", key="save_edit"):
                 
-                # Limpieza y Cierre (La persistencia ya ocurrió con los botones de actualización)
+                # Ya que los botones de actualización guardan, solo queda asegurar que si no se presionaron, 
+                # se guarden los inputs de Fecha, Lugar, Ítem, Paciente, Metodo Pago y los number_inputs 
+                # (que se actualizan al cambiar el número).
+                
+                # Llama a guardar la última vez para asegurar que todos los campos del formulario se persistan
+                save_edit_state_to_df()
+                
                 _cleanup_edit_state()
                 st.success("✅ Aventura editada y tesoro recalculado.") 
                 st.session_state.rerun_after_edit = True # <-- ACTIVA BANDERA
