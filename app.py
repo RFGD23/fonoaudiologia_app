@@ -311,19 +311,22 @@ def _cleanup_edit_state():
     if edited_id is None:
         return
         
-    # Eliminamos las claves de inputs DINÁMICAS
+    # Eliminamos las claves de inputs DINÁMICAS y botones
     keys_to_delete = [
         f'edit_valor_bruto_{edited_id}', f'edit_desc_adic_{edited_id}', 
         'original_desc_fijo_lugar', 'original_desc_tarjeta', 
         f'edit_lugar_{edited_id}', f'edit_item_{edited_id}', 
         f'edit_paciente_{edited_id}', f'edit_metodo_{edited_id}', 
         f'edit_fecha_{edited_id}',
-        f'btn_delete_form_{edited_id}',  # Clave del botón de eliminar
-        f'btn_close_edit_form_{edited_id}', # Clave del botón de cerrar
-        f'btn_save_edit_form_{edited_id}', # Clave del botón de guardar
-        f'btn_update_price_form_{edited_id}', # Clave del botón de actualizar precio
-        f'btn_update_tributo_form_{edited_id}', # Clave del botón de actualizar tributo
-        f'btn_update_tarjeta_form_{edited_id}' # Clave del botón de actualizar tarjeta
+        
+        # 🚨 LIMPIEZA DE CLAVES DE BOTONES CONFLICTIVAS 🚨
+        f'btn_delete_form_{edited_id}',  
+        f'btn_close_edit_form_{edited_id}', 
+        f'btn_save_edit_form_{edited_id}', 
+        f'btn_update_price_form_{edited_id}', 
+        f'btn_update_tributo_form_{edited_id}', 
+        f'btn_update_tarjeta_form_{edited_id}',
+        f'delete_form_{edited_id}' # Clave del nuevo formulario de eliminación
     ]
     
     for key in keys_to_delete:
@@ -1050,16 +1053,22 @@ with tab_dashboard:
             with col_final2:
                 st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state)
                 
-            # Botón de Eliminar
+            # 🚨 MODIFICACIÓN CRÍTICA: AISLAMIENTO DEL BOTÓN DE ELIMINAR EN UN FORMULARIO 🚨
             with col_final3:
-                st.button( 
-                    "🗑️ Eliminar", 
-                    key=f'btn_delete_form_{edited_id}', 
-                    type="danger", 
-                    help="Elimina permanentemente este registro.", 
-                    on_click=delete_record_callback, 
-                    args=(edited_id,)
-                )
+                # Wrapper simple para el callback dentro del submit button
+                def delete_wrapper(record_id):
+                    delete_record_callback(record_id)
+                    # El callback ya llama a st.rerun()
+                    
+                with st.form(key=f'delete_form_{edited_id}', clear_on_submit=False):
+                    st.form_submit_button(
+                        "🗑️ Eliminar", 
+                        type="danger", 
+                        use_container_width=True,
+                        help="Elimina permanentemente este registro.", 
+                        on_click=delete_wrapper, 
+                        args=(edited_id,)
+                    )
         
         # =================================================================
         # -----------------------------------------------------------------
