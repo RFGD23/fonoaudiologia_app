@@ -6,13 +6,13 @@ import time
 import plotly.express as px
 import numpy as np 
 import sqlite3 
-import os # Importar os para manejo de archivos
+import os 
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
 # ===============================================
 
-DB_FILE = 'tesoro_datos.db' # Nombre del archivo de la BD SQLite
+DB_FILE = 'tesoro_datos.db'
 PRECIOS_FILE = 'precios_base.json'
 DESCUENTOS_FILE = 'descuentos_lugar.json'
 COMISIONES_FILE = 'comisiones_pago.json'
@@ -70,7 +70,6 @@ def sanitize_number_input(value):
         return 0
     
     try:
-        # Aseguramos que sea un float antes de convertir a int, para manejar decimales en JSON
         return int(float(value)) 
     except (ValueError, TypeError):
         return 0 
@@ -323,13 +322,11 @@ def _cleanup_edit_state():
         f'edit_fecha_{edited_id}',
         
         # 🚨 LIMPIEZA DE CLAVES DE BOTONES CONFLICTIVAS 🚨
-        f'btn_delete_form_{edited_id}',  
         f'btn_close_edit_form_{edited_id}', 
         f'btn_save_edit_form_{edited_id}', 
         f'btn_update_price_form_{edited_id}', 
         f'btn_update_tributo_form_{edited_id}', 
-        f'btn_update_tarjeta_form_{edited_id}',
-        f'delete_form_{edited_id}' # Clave del nuevo formulario de eliminación
+        f'btn_update_tarjeta_form_{edited_id}', 
     ]
     
     for key in keys_to_delete:
@@ -454,20 +451,16 @@ def update_edit_tributo(edited_id):
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
-# 🚨 MODIFICACIÓN CRÍTICA DEL CALLBACK DE ELIMINACIÓN 🚨
 def delete_record_callback(record_id):
-    """Callback para eliminar un registro de la base de datos. Establece un semáforo para el RERUN."""
+    """
+    Función de eliminación. Dejada en el código pero NO invocada por ningún widget 
+    para evitar conflictos, manteniendo la función para referencia futura.
+    """
     if delete_record(record_id):
-        # 1. Elimina el registro de la BD y recarga el DataFrame.
         load_data_from_db.clear()
         st.session_state.atenciones_df = load_data_from_db()
-        
-        # 2. Establece el semáforo para que la aplicación fuerce el RERUN.
-        st.session_state['deletion_pending_cleanup'] = True 
-        st.session_state.edited_record_id = None 
-        
-        st.success(f"Registro ID {record_id} eliminado exitosamente. Recargando la aplicación...")
-        # 🚨 NO LLAMAMOS A st.rerun() AQUÍ 🚨
+        st.session_state.edited_record_id = None
+        st.rerun()
     else:
         st.error(f"No se pudo eliminar el registro ID {record_id}.")
 
@@ -618,7 +611,7 @@ if 'atenciones_df' not in st.session_state:
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
     
-# 🚨 SEMÁFORO DE CONTROL DE RERUN 🚨
+# 🚨 Semáforo de RERUN (deshabilitado al quitar el botón de borrar) 🚨
 if 'deletion_pending_cleanup' not in st.session_state:
     st.session_state.deletion_pending_cleanup = False
 
@@ -626,16 +619,11 @@ if 'deletion_pending_cleanup' not in st.session_state:
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
 
-# 🚨 BLOQUE DE EJECUCIÓN DEL SEMÁFORO 🚨
+# 🚨 BLOQUE DE EJECUCIÓN DEL SEMÁFORO (Se mantiene, pero no debería activarse) 🚨
 if st.session_state.deletion_pending_cleanup:
     with st.spinner("Limpiando estado y recargando la aplicación..."):
-        # 1. Limpieza final de claves conflictivas
         _cleanup_edit_state() 
-        
-        # 2. Desactivar el semáforo
         st.session_state.deletion_pending_cleanup = False
-        
-        # 3. Forzar el rerun, ahora sí, de forma segura
         st.rerun() 
 # ----------------------------------------
 
@@ -1059,8 +1047,8 @@ with tab_dashboard:
             # --- Botones de Control Final ---
             st.markdown("---")
             
-            # CORRECCIÓN DE COLUMNAS: Asegurar espacio para el botón de eliminar
-            col_final1, col_final2, col_final3 = st.columns([0.4, 0.3, 0.3])
+            # Se usan solo dos columnas ahora, ya que se eliminó el botón de eliminar
+            col_final1, col_final2 = st.columns([0.6, 0.4])
             
             # Botón de Guardado general
             with col_final1:
@@ -1076,23 +1064,9 @@ with tab_dashboard:
 
             # Botón de Cierre Manual
             with col_final2:
-                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state)
+                st.button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state, use_container_width=True)
                 
-            # 🚨 AISLAMIENTO DEL BOTÓN DE ELIMINAR EN UN FORMULARIO 🚨
-            with col_final3:
-                def delete_wrapper(record_id):
-                    # Llama al callback modificado que establece el semáforo
-                    delete_record_callback(record_id) 
-
-                with st.form(key=f'delete_form_{edited_id}', clear_on_submit=False):
-                    st.form_submit_button(
-                        "🗑️ Eliminar", 
-                        type="danger", 
-                        use_container_width=True,
-                        help="Elimina permanentemente este registro.", 
-                        on_click=delete_wrapper, 
-                        args=(edited_id,)
-                    )
+            # 🚨 El espacio donde estaba el botón de eliminación queda vacío para mantener la estabilidad. 🚨
         
         # =================================================================
         # -----------------------------------------------------------------
