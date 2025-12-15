@@ -293,10 +293,8 @@ def force_recalculate():
     """Función de callback simple para forzar actualización del estado (ej: para el Total Líquido) en el formulario de REGISTRO."""
     pass
 
-# CORRECCIÓN: ESTA FUNCIÓN AHORA RECIBE EL ID
 def update_edit_price(edited_id):
     """Callback para actualizar precio sugerido en el modal de edición."""
-    # Se usa la clave dinámica
     lugar_key_edit = st.session_state.get(f'edit_lugar_{edited_id}', '').upper()
     item_key_edit = st.session_state.get(f'edit_item_{edited_id}', '')
     
@@ -313,7 +311,7 @@ def _cleanup_edit_state():
     if edited_id is None:
         return
         
-    # Eliminamos las claves de inputs DINÁMICAS para forzar la recarga en el próximo open
+    # Eliminamos las claves de inputs DINÁMICAS
     keys_to_delete = [
         f'edit_valor_bruto_{edited_id}', f'edit_desc_adic_{edited_id}', 
         'original_desc_fijo_lugar', 'original_desc_tarjeta', 
@@ -375,7 +373,6 @@ def save_edit_state_to_df():
     
     return 0 
 
-# CORRECCIÓN: ESTA FUNCIÓN AHORA RECIBE EL ID
 def update_edit_bruto_price(edited_id):
     """Callback: Actualiza el Valor Bruto al precio base sugerido (y guarda)."""
     # ACCESO A CLAVES DINÁMICAS CORREGIDO
@@ -392,12 +389,10 @@ def update_edit_bruto_price(edited_id):
     new_total = save_edit_state_to_df() 
     if new_total > 0:
         st.success(f"Valor Bruto actualizado a {format_currency(st.session_state[f'edit_valor_bruto_{edited_id}'])}$. Nuevo Tesoro Líquido: {format_currency(new_total)}")
-        # Forzamos el rerun después de guardar para que el expander refleje el estado
-        st.session_state.rerun_after_edit = True 
+        st.rerun() # FORZAR RERUN DESPUÉS DE GUARDAR
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
-# CORRECCIÓN: ESTA FUNCIÓN AHORA RECIBE EL ID
 def update_edit_desc_tarjeta(edited_id):
     """Callback: Recalcula y actualiza el Desc. Tarjeta (y guarda)."""
     # ACCESO A CLAVES DINÁMICAS CORREGIDO
@@ -412,11 +407,10 @@ def update_edit_desc_tarjeta(edited_id):
     new_total = save_edit_state_to_df() 
     if new_total > 0:
         st.success(f"Desc. Tarjeta recalculado a {format_currency(nuevo_desc_tarjeta)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}")
-        st.session_state.rerun_after_edit = True 
+        st.rerun() # FORZAR RERUN DESPUÉS DE GUARDAR
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
-# CORRECCIÓN: ESTA FUNCIÓN AHORA RECIBE EL ID
 def update_edit_tributo(edited_id):
     """Callback: Recalcula y actualiza el Tributo (Desc. Fijo Lugar) basado en Lugar y Fecha (y guarda)."""
     # ACCESO A CLAVES DINÁMICAS CORREGIDO
@@ -446,7 +440,7 @@ def update_edit_tributo(edited_id):
     new_total = save_edit_state_to_df() 
     if new_total > 0:
         st.success(f"Tributo recalculado a {format_currency(desc_fijo_calc)}$. Nuevo Tesoro Líquido: {format_currency(new_total)}")
-        st.session_state.rerun_after_edit = True 
+        st.rerun() # FORZAR RERUN DESPUÉS DE GUARDAR
     else:
         st.error("Error: No se pudo actualizar el registro en la base de datos.")
 
@@ -457,18 +451,19 @@ def delete_record_callback(record_id):
         st.session_state.atenciones_df = load_data_from_db()
         _cleanup_edit_state() # Limpiar estado de edición si se elimina el registro actual
         st.success(f"Registro ID {record_id} eliminado exitosamente.")
-        st.session_state.rerun_after_edit = True 
+        st.rerun() # FORZAR RERUN DESPUÉS DE ELIMINAR
     else:
         st.error(f"No se pudo eliminar el registro ID {record_id}.")
 
+# --- MODIFICACIÓN CLAVE PARA ABRIR EL FORMULARIO ---
 def edit_record_callback(record_id):
     """Callback para establecer el ID a editar y recargar la página."""
     st.session_state.edited_record_id = record_id
-    # Se limpia el estado de edición ANTES de forzar el re-run, para que el nuevo formulario cargue limpio
-    _cleanup_edit_state() 
-    st.session_state.rerun_after_edit = True # Forzar recarga para abrir el formulario
+    # IMPORTANTE: Eliminamos la llamada a _cleanup_edit_state() aquí.
+    # El formulario se debe limpiar solo al CERRAR/GUARDAR/ELIMINAR.
+    st.rerun() # FORZAR RERUN INMEDIATO
 
-
+# --- CALLBACK DE SUBMIT DE FORMULARIO DE REGISTRO
 def submit_and_reset():
     """Ejecuta la lógica de guardado del formulario de registro y luego resetea el formulario."""
     
@@ -537,7 +532,6 @@ def format_currency(value):
 
 def set_dark_mode_theme():
     """Establece transparencia y ajusta la apariencia para el tema oscuro."""
-    # CORRECCIÓN EN CSS: row-header para quitar el fondo feo
     dark_mode_css = '''
     <style>
     .stApp, [data-testid="stAppViewBlock"], .main { background-color: transparent !important; background-image: none !important; }
@@ -570,7 +564,7 @@ def set_dark_mode_theme():
     /* Estilo para la tabla (DataFrame simulado con columnas) */
     .row-header {
         font-weight: bold;
-        background-color: transparent; /* AHORA TRANSPARENTE */
+        background-color: transparent; 
         padding: 8px 0;
         border-bottom: 2px solid rgba(80, 80, 80, 0.5);
     }
@@ -598,26 +592,20 @@ st.set_page_config(
 
 set_dark_mode_theme()
 
-# *** LÓGICA DE REINICIO DE BANDERA PARA CALLBACKS DE EDICIÓN ***
-if 'rerun_after_edit' not in st.session_state:
-    st.session_state.rerun_after_edit = False
-
-if st.session_state.rerun_after_edit:
-    st.session_state.rerun_after_edit = False 
-    st.rerun() 
+# --- CAMBIO DE LÓGICA: ELIMINAMOS LA BANDERA DE RERUN INEFICIENTE ---
+# La recarga ahora se maneja directamente con st.rerun() en los callbacks
+# if 'rerun_after_edit' not in st.session_state:
+#    st.session_state.rerun_after_edit = False
+# if st.session_state.rerun_after_edit:
+#    st.session_state.rerun_after_edit = False 
+#    st.rerun() 
 
 # --- Inicialización de Estado ---
 if 'atenciones_df' not in st.session_state:
     st.session_state.atenciones_df = load_data_from_db()
     
-# Mantenemos solo el ID que se va a editar
 if 'edited_record_id' not in st.session_state:
     st.session_state.edited_record_id = None
-
-# --- INICIALIZACIÓN ROBUSTA DE VARIABLES DE EDICIÓN (PREVENIR ATTRIBUTEERROR) ---
-# Ya no es necesario inicializar estas variables aquí, ya que se acceden usando el ID dinámico
-# st.session_state[f'edit_valor_bruto_{edited_id}'] = ...
-# Solo se mantiene el control del ID a editar.
 
 st.title("🏰 Tesoro de Ingresos Fonoaudiológicos 💰")
 st.markdown("✨ ¡Transforma cada atención en un diamante! ✨")
@@ -904,20 +892,17 @@ with tab_dashboard:
         
         
         # 1. Definir columnas y anchos para la tabla simulada
-        # Anchos relativos: [Botón, ID, Fecha, Lugar, Ítem, Paciente, Bruto, Neto, Ajustes]
         cols_widths = [1, 0.5, 1.2, 1.5, 1.5, 2, 1.2, 1.2, 1] 
         cols_names = ["", "ID", "Fecha", "Lugar", "Ítem", "Paciente", "Valor Bruto", "Total Recibido", "Ajustes"]
 
         # 2. Encabezados de la tabla
         header_cols = st.columns(cols_widths)
         for i, name in enumerate(cols_names):
-            # CORRECCIÓN DE ESTILO: Usamos un span para aplicar el estilo de encabezado definido en el CSS (ahora transparente)
             header_cols[i].markdown(f"<span class='row-header'>{name}</span>", unsafe_allow_html=True)
         st.markdown("---")
 
 
         # 3. Iterar sobre el DataFrame para mostrar los datos y los botones
-        # EL DATAFRAME df YA ESTÁ ORDENADO POR ID ASCENDENTE GRACIAS A load_data_from_db
         for index, row in df.iterrows():
             
             # Formatear datos
@@ -958,19 +943,18 @@ with tab_dashboard:
             
             # 2. 🚨 CARGAR ESTADO DE SESIÓN AL ABRIR EL FORMULARIO 🚨
             
-            # ACCESO Y ASIGNACIÓN DE CLAVES DINÁMICAS (Si no existen en el estado)
+            # Si las claves dinámicas ya existen, Streamlit las respeta. 
+            # Si NO existen, las cargamos de la fila de la BD.
             if f'edit_paciente_{edited_id}' not in st.session_state:
                  st.session_state[f'edit_paciente_{edited_id}'] = edit_row['Paciente']
-                 
-            st.session_state[f'edit_valor_bruto_{edited_id}'] = edit_row['Valor Bruto']
-            st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Adicional']
-            st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
-            st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
-            st.session_state[f'edit_fecha_{edited_id}'] = edit_row['Fecha'].date()
-            
-            st.session_state[f'edit_lugar_{edited_id}'] = edit_row['Lugar']
-            st.session_state[f'edit_item_{edited_id}'] = edit_row['Ítem']
-            st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
+                 st.session_state[f'edit_valor_bruto_{edited_id}'] = edit_row['Valor Bruto']
+                 st.session_state[f'edit_desc_adic_{edited_id}'] = edit_row['Desc. Adicional']
+                 st.session_state.original_desc_fijo_lugar = edit_row['Desc. Fijo Lugar']
+                 st.session_state.original_desc_tarjeta = edit_row['Desc. Tarjeta']
+                 st.session_state[f'edit_fecha_{edited_id}'] = edit_row['Fecha'].date()
+                 st.session_state[f'edit_lugar_{edited_id}'] = edit_row['Lugar']
+                 st.session_state[f'edit_item_{edited_id}'] = edit_row['Ítem']
+                 st.session_state[f'edit_metodo_{edited_id}'] = edit_row['Método Pago']
             
             
             # 3. Dibujar el formulario
@@ -999,8 +983,9 @@ with tab_dashboard:
 
                     # ÍTEM (st.selectbox) - CLAVE DINÁMICA
                     items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state[f'edit_lugar_{edited_id}'], {}).keys())
+                    item_actual = st.session_state[f'edit_item_{edited_id}']
                     try:
-                         item_idx = items_edit_list.index(st.session_state[f'edit_item_{edited_id}']) if st.session_state[f'edit_item_{edited_id}'] in items_edit_list else 0
+                         item_idx = items_edit_list.index(item_actual) if item_actual in items_edit_list else 0
                     except (ValueError, KeyError):
                         item_idx = 0
                     st.selectbox("📋 Ítem", options=items_edit_list, key=f"edit_item_{edited_id}", index=item_idx, on_change=update_edit_price, args=(edited_id,))
@@ -1065,7 +1050,6 @@ with tab_dashboard:
                     current_desc_tarjeta = st.session_state.get('original_desc_tarjeta', edit_row['Desc. Tarjeta'])
                     
                     # Calcular el total líquido temporal (Vista Previa)
-                    # ACCESO A CLAVES DINÁMICAS CORREGIDO
                     total_liquido_live = (
                         st.session_state[f'edit_valor_bruto_{edited_id}']
                         - current_desc_fijo
@@ -1099,14 +1083,14 @@ with tab_dashboard:
                     ):
                         new_total = save_edit_state_to_df()
                         st.success(f"Registro ID {edited_id} actualizado y guardado. Nuevo Total: {format_currency(new_total)}")
-                        _cleanup_edit_state()
-                        st.session_state.rerun_after_edit = True 
+                        _cleanup_edit_state() # Limpiar estado
+                        st.rerun() # FORZAR RERUN
 
                 # Botón de Cierre Manual - CLAVE DINÁMICA
                 with col_final2:
                     st.form_submit_button("❌ Cerrar Edición", key=f'btn_close_edit_form_{edited_id}', on_click=_cleanup_edit_state)
                     
-                # Botón de Eliminar - CLAVE DINÁMICA (Línea 1099, el foco original del error)
+                # Botón de Eliminar - CLAVE DINÁMICA
                 with col_final3:
                     st.form_submit_button(
                         "🗑️ Eliminar", 
