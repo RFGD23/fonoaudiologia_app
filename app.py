@@ -6,7 +6,7 @@ import json
 import time 
 import plotly.express as px
 import numpy as np 
-import sqlite3 # <--- ¡NUEVO!
+import sqlite3 
 
 # ===============================================
 # 1. CONFIGURACIÓN Y BASES DE DATOS (MAESTRAS)
@@ -154,9 +154,7 @@ def load_data_from_db():
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce', format='%Y-%m-%d')
     
     # Renombramos "Item" a "Ítem" aquí solo para visualización si es necesario.
-    # Si la BD tiene 'Item' y el resto del código usa 'Ítem', podemos renombrar. 
-    # Para ser estrictos y evitar errores, se usará 'Item' en el código.
-    # Si deseas que se muestre como 'Ítem' en el DataFrame:
+    # Esta es la única vez que usamos 'Ítem'
     if 'Item' in df.columns:
         df = df.rename(columns={'Item': 'Ítem'})
         
@@ -224,6 +222,8 @@ def calcular_ingreso(lugar, item, metodo_pago, desc_adicional_manual, fecha_aten
               'total_recibido': 0
           }
     
+    # NOTA: En este punto, 'item' puede ser 'Item' o 'Ítem' dependiendo de cómo lo ingresó el usuario.
+    # El diccionario de precios usa la clave tal cual está en la configuración.
     precio_base = PRECIOS_BASE_CONFIG.get(lugar_upper, {}).get(item, 0)
     valor_bruto = valor_bruto_override if valor_bruto_override is not None else precio_base
     
@@ -398,11 +398,8 @@ def _cleanup_edit_state():
     if 'original_desc_tarjeta' in st.session_state: del st.session_state.original_desc_tarjeta
 
 
-# --------------------------------------------------------------------------
-
-
 # --- FUNCIONES DE CALLBACK PARA LOS BOTONES DE ACTUALIZACIÓN EN EDICIÓN (CON CIERRE FORZADO Y BANDERA) ---
-# Lógica modificada para usar la nueva save_edit_state_to_df()
+# Lógica modificada para usar UPDATE en la BD
 
 def update_edit_bruto_price():
     """Callback: Actualiza el Valor Bruto, guarda, notifica Y CIERRA (usando bandera)."""
@@ -965,8 +962,9 @@ with tab_dashboard:
                 
                 # Inicialización de estado para la edición
                 for col in ['Lugar', 'Ítem', 'Paciente', 'Método Pago']:
-                    if f'edit_{col.lower().replace("í', "i")}' not in st.session_state:
-                        st.session_state[f'edit_{col.lower().replace("í', "i")}'] = edit_row[col]
+                    # CORRECCIÓN DE SINTAXIS: Usamos comillas dobles internas para 'í' y 'i'
+                    if f'edit_{col.lower().replace("í", "i")}' not in st.session_state:
+                        st.session_state[f'edit_{col.lower().replace("í", "i")}'] = edit_row[col]
 
                 # -------------------------------------------------------------
                 # COLUMNA IZQUIERDA: Fecha, Lugar, Ítem, Paciente
@@ -1000,6 +998,7 @@ with tab_dashboard:
                     items_edit_list = list(PRECIOS_BASE_CONFIG.get(st.session_state.edit_lugar, {}).keys())
                     try:
                          # Si la tabla tiene ÍTEM, usamos 'Ítem', si tiene 'Item' (por BD) usamos 'Item'
+                         # El acceso es genérico para funcionar con cualquiera de las dos columnas
                          item_val = edit_row.get('Ítem', edit_row.get('Item', items_edit_list[0] if items_edit_list else ''))
                          item_idx = items_edit_list.index(item_val) if item_val in items_edit_list else 0
                     except (ValueError, KeyError):
@@ -1008,7 +1007,7 @@ with tab_dashboard:
                     st.selectbox(
                         "📋 Ítem", 
                         options=items_edit_list, 
-                        key="edit_item", 
+                        key="edit_item", # <-- Esta clave se usa luego para el UPDATE (con el valor correcto: Ítem/Item)
                         index=item_idx,
                         on_change=update_edit_price # Recalcula precio sugerido
                     )
