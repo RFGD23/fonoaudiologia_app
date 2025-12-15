@@ -448,7 +448,7 @@ def update_edit_desc_tarjeta(edited_id):
     valor_bruto_actual = st.session_state[f'edit_valor_bruto_{edited_id}']
     
     comision_pct_actual = COMISIONES_PAGO.get(metodo_pago_actual.upper(), 0.00)
-    nuevo_desc_tarjeta = int((valor_bruto_actual- desc_adicional_manual_actual) * comision_pct_actual)
+    nuevo_desc_tarjeta = int((valor_bruto_actual- desc_adicional_manual) * comision_pct_actual)
     
     # 1. Actualizar el valor en el estado de sesión
     st.session_state.original_desc_tarjeta = nuevo_desc_tarjeta
